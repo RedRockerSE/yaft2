@@ -7,6 +7,7 @@ A plugin-based forensic analysis tool for Python 3.13+ designed for processing a
 - **ZIP File Processing**: Built-in support for forensic analysis of ZIP archives
 - **Dynamic Plugin System**: Load and manage forensic plugins at runtime without code changes
 - **Beautiful CLI**: Color-coded output with Rich and Typer for forensic reporting
+- **Case Management**: Swedish forensic case identifier support (U-nummer, K-nummer, BG-nummer) with automatic validation and report organization
 - **Type-Safe**: Full type hints with Pydantic validation
 - **Cross-Platform**: Build standalone executables for Windows and Linux
 - **Forensic-Focused**: Designed for digital forensics workflows and evidence processing
@@ -97,6 +98,49 @@ python -m yaft.cli reload
 python -m yaft.cli --version
 ```
 
+### Case Identifier Management
+
+YAFT includes built-in support for Swedish forensic case management. When running plugins, the tool prompts for case identifiers that are automatically included in reports and used to organize output files.
+
+**Case Identifier Formats:**
+- **U-nummer**: User/investigator identifier (format: `u0000000` - lowercase u followed by 7 digits)
+- **K-nummer**: Case number (format: `K0000000-00` - uppercase K followed by 7 digits, dash, 2 digits)
+- **BG-nummer**: Evidence number (format: `BG000000-0` - uppercase BG followed by 6 digits, dash, 1 digit)
+
+**Example Usage:**
+```bash
+# Run a plugin (will prompt for case identifiers)
+python -m yaft.cli run iOSAppGUIDExtractorPlugin --zip evidence.zip
+
+# You will be prompted:
+# ? U-nummer (format: u0000000): u1234567
+# ? K-nummer (format: K0000000-00): K2024001-01
+# ? BG-nummer (format: BG000000-0): BG123456-1
+```
+
+**Output Organization:**
+Reports and extracted data are automatically organized by case:
+```
+yaft_output/
+├── K2024001-01/              # Case number
+│   └── BG123456-1/           # Evidence number
+│       ├── reports/          # Generated reports
+│       └── ios_extractions/  # Plugin-specific outputs
+```
+
+**Report Metadata:**
+Case identifiers are automatically included in report metadata sections:
+```markdown
+## Metadata
+- **Generated**: 2024-01-15 14:30:00
+- **U-nummer**: u1234567
+- **K-nummer**: K2024001-01
+- **BG-nummer**: BG123456-1
+```
+
+**Input Validation:**
+The tool validates all case identifiers according to their required formats. Invalid formats will be rejected with clear error messages, and you'll be prompted to re-enter the value.
+
 ## Creating Plugins
 
 ### Plugin Structure
@@ -171,6 +215,22 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     self.core_api.print_warning("Warning message")
     self.core_api.print_info("Info message")
 
+    # Case identifier management (Swedish forensics)
+    # Validation methods (returns True/False)
+    is_valid = self.core_api.validate_u_nummer("u1234567")
+    is_valid = self.core_api.validate_k_nummer("K2024001-01")
+    is_valid = self.core_api.validate_bg_nummer("BG123456-1")
+
+    # Setting case identifiers programmatically
+    self.core_api.set_case_identifiers("u1234567", "K2024001-01", "BG123456-1")
+
+    # Getting case identifiers
+    u, k, bg = self.core_api.get_case_identifiers()
+
+    # Get case-based output directory (automatically uses case identifiers if set)
+    output_dir = self.core_api.get_case_output_dir("ios_extractions")
+    # Returns: yaft_output/K2024001-01/BG123456-1/ios_extractions
+
     # ZIP file handling (forensic analysis)
     zip_path = self.core_api.get_current_zip()
     files = self.core_api.list_zip_contents()
@@ -197,7 +257,7 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
         "SELECT name, value FROM settings"
     )
 
-    # Unified markdown report generation
+    # Unified markdown report generation (automatically includes case identifiers)
     sections = [
         {"heading": "Summary", "content": "Analysis completed"},
         {"heading": "Findings", "content": ["Finding 1", "Finding 2"], "style": "list"},
@@ -209,6 +269,7 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
         sections=sections,
         metadata={"Status": "Complete"}
     )
+    # Reports are saved to: yaft_output/K2024001-01/BG123456-1/reports/
 
     # User input
     name = self.core_api.get_user_input("Enter your name")

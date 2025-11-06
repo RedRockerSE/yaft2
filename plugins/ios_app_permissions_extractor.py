@@ -151,7 +151,7 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
             self.core_api.print_success(f"Report generated: {report_path}")
 
             # Export to JSON
-            output_dir = Path.cwd() / "yaft_output" / "ios_extractions"
+            output_dir = self.core_api.get_case_output_dir("ios_extractions")
             output_dir.mkdir(parents=True, exist_ok=True)
 
             json_path = output_dir / f"{current_zip.stem}_permissions.json"

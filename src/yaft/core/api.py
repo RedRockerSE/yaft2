@@ -53,6 +53,11 @@ class CoreAPI:
         self._current_zip: Path | None = None
         self._zip_handle: zipfile.ZipFile | None = None
 
+        # Case identifiers for forensic analysis
+        self._u_nummer: str | None = None
+        self._k_nummer: str | None = None
+        self._bg_nummer: str | None = None
+
     def _setup_logging(self) -> None:
         """Configure logging with Rich handler."""
         logging.basicConfig(
@@ -166,6 +171,150 @@ class CoreAPI:
         """
         response = self.console.input(f"[bold cyan]?[/bold cyan] {message} [y/N]: ")
         return response.lower() in ("y", "yes")
+
+    # ========== Case Identifier Methods ==========
+
+    def validate_u_nummer(self, value: str) -> bool:
+        """
+        Validate U-nummer format: u0000000 (7 digits).
+
+        Args:
+            value: U-nummer to validate
+
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        import re
+        return bool(re.match(r'^u\d{7}$', value, re.IGNORECASE))
+
+    def validate_k_nummer(self, value: str) -> bool:
+        """
+        Validate K-nummer format: K0000000-00 (8 digits, dash, 2 digits).
+
+        Args:
+            value: K-nummer to validate
+
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        import re
+        return bool(re.match(r'^K\d{7}-\d{2}$', value, re.IGNORECASE))
+
+    def validate_bg_nummer(self, value: str) -> bool:
+        """
+        Validate BG-nummer format: BG000000-0 (6 digits, dash, 1 digit).
+
+        Args:
+            value: BG-nummer to validate
+
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        import re
+        return bool(re.match(r'^BG\d{6}-\d$', value, re.IGNORECASE))
+
+    def prompt_for_case_identifiers(self) -> tuple[str, str, str]:
+        """
+        Prompt user for case identifiers with validation.
+
+        Returns:
+            tuple[str, str, str]: (u_nummer, k_nummer, bg_nummer)
+
+        Raises:
+            ValueError: If user cancels input (Ctrl+C)
+        """
+        self.console.print("\n[bold cyan]Case Information Required[/bold cyan]")
+        self.console.print("Please enter the following case identifiers:\n")
+
+        # Prompt for U-nummer
+        while True:
+            u_nummer = self.console.input("[bold cyan]?[/bold cyan] U-nummer (format: u0000000): ").strip()
+            if self.validate_u_nummer(u_nummer):
+                u_nummer = u_nummer.lower()  # Normalize to lowercase
+                break
+            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: u followed by 7 digits (e.g., u1234567)")
+
+        # Prompt for K-nummer
+        while True:
+            k_nummer = self.console.input("[bold cyan]?[/bold cyan] K-nummer (format: K0000000-00): ").strip()
+            if self.validate_k_nummer(k_nummer):
+                k_nummer = k_nummer.upper()  # Normalize to uppercase
+                break
+            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: K followed by 7 digits, dash, 2 digits (e.g., K1234567-01)")
+
+        # Prompt for BG-nummer
+        while True:
+            bg_nummer = self.console.input("[bold cyan]?[/bold cyan] BG-nummer (format: BG000000-0): ").strip()
+            if self.validate_bg_nummer(bg_nummer):
+                bg_nummer = bg_nummer.upper()  # Normalize to uppercase
+                break
+            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: BG followed by 6 digits, dash, 1 digit (e.g., BG123456-1)")
+
+        # Store identifiers
+        self._u_nummer = u_nummer
+        self._k_nummer = k_nummer
+        self._bg_nummer = bg_nummer
+
+        self.console.print(f"\n[bold green]✓[/bold green] Case identifiers set:")
+        self.console.print(f"  U-nummer:  {u_nummer}")
+        self.console.print(f"  K-nummer:  {k_nummer}")
+        self.console.print(f"  BG-nummer: {bg_nummer}\n")
+
+        return u_nummer, k_nummer, bg_nummer
+
+    def get_case_identifiers(self) -> tuple[str | None, str | None, str | None]:
+        """
+        Get stored case identifiers.
+
+        Returns:
+            tuple[str | None, str | None, str | None]: (u_nummer, k_nummer, bg_nummer)
+        """
+        return self._u_nummer, self._k_nummer, self._bg_nummer
+
+    def set_case_identifiers(self, u_nummer: str, k_nummer: str, bg_nummer: str) -> None:
+        """
+        Set case identifiers programmatically (for testing).
+
+        Args:
+            u_nummer: U-nummer
+            k_nummer: K-nummer
+            bg_nummer: BG-nummer
+
+        Raises:
+            ValueError: If any identifier has invalid format
+        """
+        if not self.validate_u_nummer(u_nummer):
+            raise ValueError(f"Invalid U-nummer format: {u_nummer}")
+        if not self.validate_k_nummer(k_nummer):
+            raise ValueError(f"Invalid K-nummer format: {k_nummer}")
+        if not self.validate_bg_nummer(bg_nummer):
+            raise ValueError(f"Invalid BG-nummer format: {bg_nummer}")
+
+        self._u_nummer = u_nummer.lower()
+        self._k_nummer = k_nummer.upper()
+        self._bg_nummer = bg_nummer.upper()
+
+    def get_case_output_dir(self, subdir: str = "") -> Path:
+        """
+        Get case-based output directory path.
+
+        Args:
+            subdir: Optional subdirectory name (e.g., "ios_extractions", "reports")
+
+        Returns:
+            Path: Output directory path (yaft_output/<K-nummer>/<BG-nummer>/<subdir>)
+                  Falls back to yaft_output/<subdir> if case identifiers not set
+        """
+        base_dir = Path.cwd() / "yaft_output"
+
+        if self._k_nummer and self._bg_nummer:
+            if subdir:
+                return base_dir / self._k_nummer / self._bg_nummer / subdir
+            return base_dir / self._k_nummer / self._bg_nummer
+        else:
+            if subdir:
+                return base_dir / subdir
+            return base_dir
 
     def read_file(self, filepath: Path) -> str:
         """
@@ -650,9 +799,14 @@ class CoreAPI:
         """
         from datetime import datetime
 
-        # Setup output directory
+        # Setup output directory with case-based structure
         if output_dir is None:
-            output_dir = Path.cwd() / "yaft_output" / "reports"
+            # Use case identifiers for path structure: yaft_output/<K-nummer>/<BG-nummer>/reports
+            if self._k_nummer and self._bg_nummer:
+                output_dir = Path.cwd() / "yaft_output" / self._k_nummer / self._bg_nummer / "reports"
+            else:
+                # Fallback to default if identifiers not set
+                output_dir = Path.cwd() / "yaft_output" / "reports"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
@@ -674,6 +828,14 @@ class CoreAPI:
         lines.append("")
         lines.append(f"- **Plugin**: {plugin_name}")
         lines.append(f"- **Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Add case identifiers if set
+        if self._u_nummer:
+            lines.append(f"- **U-nummer**: {self._u_nummer}")
+        if self._k_nummer:
+            lines.append(f"- **K-nummer**: {self._k_nummer}")
+        if self._bg_nummer:
+            lines.append(f"- **BG-nummer**: {self._bg_nummer}")
 
         if self._current_zip:
             lines.append(f"- **Source ZIP**: {self._current_zip.name}")

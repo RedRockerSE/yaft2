@@ -403,3 +403,114 @@ def test_query_sqlite_from_zip_db_not_found(core_api, temp_dir):
 
     with pytest.raises(KeyError):
         core_api.query_sqlite_from_zip("nonexistent.db", "SELECT * FROM table")
+
+
+# ========== Case Identifier Tests ==========
+
+
+def test_validate_u_nummer(core_api):
+    """Test U-nummer validation."""
+    # Valid formats
+    assert core_api.validate_u_nummer("u1234567") is True
+    assert core_api.validate_u_nummer("U1234567") is True  # Case insensitive
+    assert core_api.validate_u_nummer("u0000000") is True
+
+    # Invalid formats
+    assert core_api.validate_u_nummer("u123456") is False  # Too short
+    assert core_api.validate_u_nummer("u12345678") is False  # Too long
+    assert core_api.validate_u_nummer("x1234567") is False  # Wrong letter
+    assert core_api.validate_u_nummer("1234567") is False  # Missing letter
+    assert core_api.validate_u_nummer("uabcdefg") is False  # Not digits
+
+
+def test_validate_k_nummer(core_api):
+    """Test K-nummer validation."""
+    # Valid formats
+    assert core_api.validate_k_nummer("K1234567-01") is True
+    assert core_api.validate_k_nummer("k1234567-01") is True  # Case insensitive
+    assert core_api.validate_k_nummer("K0000000-00") is True
+
+    # Invalid formats
+    assert core_api.validate_k_nummer("K123456-01") is False  # First part too short
+    assert core_api.validate_k_nummer("K1234567-1") is False  # Second part too short
+    assert core_api.validate_k_nummer("K1234567-001") is False  # Second part too long
+    assert core_api.validate_k_nummer("X1234567-01") is False  # Wrong letter
+    assert core_api.validate_k_nummer("K1234567") is False  # Missing dash and suffix
+    assert core_api.validate_k_nummer("K123456701") is False  # Missing dash
+
+
+def test_validate_bg_nummer(core_api):
+    """Test BG-nummer validation."""
+    # Valid formats
+    assert core_api.validate_bg_nummer("BG123456-1") is True
+    assert core_api.validate_bg_nummer("bg123456-1") is True  # Case insensitive
+    assert core_api.validate_bg_nummer("BG000000-0") is True
+
+    # Invalid formats
+    assert core_api.validate_bg_nummer("BG12345-1") is False  # First part too short
+    assert core_api.validate_bg_nummer("BG1234567-1") is False  # First part too long
+    assert core_api.validate_bg_nummer("BG123456-12") is False  # Second part too long
+    assert core_api.validate_bg_nummer("BG123456") is False  # Missing dash and suffix
+    assert core_api.validate_bg_nummer("XG123456-1") is False  # Wrong prefix
+
+
+def test_set_and_get_case_identifiers(core_api):
+    """Test setting and getting case identifiers."""
+    core_api.set_case_identifiers("u1234567", "K7654321-02", "BG999888-7")
+
+    u, k, bg = core_api.get_case_identifiers()
+
+    assert u == "u1234567"
+    assert k == "K7654321-02"
+    assert bg == "BG999888-7"
+
+
+def test_set_case_identifiers_normalization(core_api):
+    """Test case identifier normalization."""
+    # U-nummer should be lowercase, K and BG should be uppercase
+    core_api.set_case_identifiers("U1234567", "k7654321-02", "bg999888-7")
+
+    u, k, bg = core_api.get_case_identifiers()
+
+    assert u == "u1234567"  # Normalized to lowercase
+    assert k == "K7654321-02"  # Normalized to uppercase
+    assert bg == "BG999888-7"  # Normalized to uppercase
+
+
+def test_set_case_identifiers_invalid(core_api):
+    """Test setting invalid case identifiers raises errors."""
+    with pytest.raises(ValueError, match="Invalid U-nummer"):
+        core_api.set_case_identifiers("invalid", "K1234567-01", "BG123456-1")
+
+    with pytest.raises(ValueError, match="Invalid K-nummer"):
+        core_api.set_case_identifiers("u1234567", "invalid", "BG123456-1")
+
+    with pytest.raises(ValueError, match="Invalid BG-nummer"):
+        core_api.set_case_identifiers("u1234567", "K1234567-01", "invalid")
+
+
+def test_get_case_output_dir_with_identifiers(core_api):
+    """Test getting case-based output directory."""
+    core_api.set_case_identifiers("u1234567", "K7654321-02", "BG999888-7")
+
+    # Base directory
+    base_dir = core_api.get_case_output_dir()
+    assert base_dir.parts[-3:] == ("yaft_output", "K7654321-02", "BG999888-7")
+
+    # With subdirectory
+    reports_dir = core_api.get_case_output_dir("reports")
+    assert reports_dir.parts[-4:] == ("yaft_output", "K7654321-02", "BG999888-7", "reports")
+
+    ios_dir = core_api.get_case_output_dir("ios_extractions")
+    assert ios_dir.parts[-4:] == ("yaft_output", "K7654321-02", "BG999888-7", "ios_extractions")
+
+
+def test_get_case_output_dir_without_identifiers(core_api):
+    """Test getting output directory without case identifiers."""
+    # Without case identifiers, should fall back to default
+    base_dir = core_api.get_case_output_dir()
+    assert base_dir.parts[-1] == "yaft_output"
+    assert "K" not in str(base_dir)
+
+    reports_dir = core_api.get_case_output_dir("reports")
+    assert reports_dir.parts[-2:] == ("yaft_output", "reports")

@@ -129,6 +129,16 @@ def run(
     core_api = get_core_api()
     plugin_manager = get_plugin_manager()
 
+    # Prompt for case identifiers
+    try:
+        core_api.prompt_for_case_identifiers()
+    except KeyboardInterrupt:
+        core_api.print_error("\nCase identifier input cancelled")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        core_api.print_error(f"Failed to get case identifiers: {e}")
+        raise typer.Exit(code=1)
+
     # Load ZIP file if provided
     if zip_file:
         try:
