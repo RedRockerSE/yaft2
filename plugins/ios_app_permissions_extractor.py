@@ -7,11 +7,7 @@ notification settings from iOS full filesystem extractions.
 Based on forensic research of TCC.db, knowledgeC.db, and applicationState.plist.
 """
 
-import sqlite3
-import plistlib
 import json
-import tempfile
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
@@ -87,7 +83,6 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
     def __init__(self, core_api: CoreAPI) -> None:
         super().__init__(core_api)
         self.apps_data: Dict[str, Dict] = {}
-        self.temp_dir: Optional[str] = None
         self.zip_prefix = ''
 
     @property
@@ -106,7 +101,6 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
         """Initialize the plugin."""
         self.core_api.log_info(f"Initializing {self.metadata.name}")
         self.apps_data = {}
-        self.temp_dir = None
 
     def execute(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         """
@@ -204,35 +198,28 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
         permissions = []
 
         try:
-            # Extract DB to temp file
-            if not self.temp_dir:
-                self.temp_dir = tempfile.mkdtemp(prefix='yaft_ios_')
+            # Query with fallback for different iOS schemas
+            primary_query = """
+                SELECT service, client, client_type, auth_value, auth_reason,
+                       last_modified, indirect_object_identifier
+                FROM access
+                ORDER BY service, client
+            """
 
-            temp_db_path = Path(self.temp_dir) / 'TCC.db'
+            fallback_query = """
+                SELECT service, client, client_type, auth_value, auth_reason,
+                       last_modified, NULL
+                FROM access
+                ORDER BY service, client
+            """
 
-            content = self.core_api.read_zip_file(self._normalize_path(db_path))
-            temp_db_path.write_bytes(content)
+            rows = self.core_api.query_sqlite_from_zip(
+                self._normalize_path(db_path),
+                primary_query,
+                fallback_query=fallback_query
+            )
 
-            conn = sqlite3.connect(str(temp_db_path))
-            cursor = conn.cursor()
-
-            # Try newer iOS schema first
-            try:
-                cursor.execute("""
-                    SELECT service, client, client_type, auth_value, auth_reason,
-                           last_modified, indirect_object_identifier
-                    FROM access
-                    ORDER BY service, client
-                """)
-            except sqlite3.OperationalError:
-                cursor.execute("""
-                    SELECT service, client, client_type, auth_value, auth_reason,
-                           last_modified, NULL
-                    FROM access
-                    ORDER BY service, client
-                """)
-
-            for row in cursor.fetchall():
+            for row in rows:
                 service, client, client_type, auth_value, auth_reason, last_modified, indirect_object = row
 
                 # Convert auth_value to status
@@ -266,8 +253,6 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
                     'is_high_risk': service_name in self.HIGH_RISK_PERMISSIONS
                 })
 
-            conn.close()
-
         except KeyError:
             self.core_api.log_warning("TCC.db not found in ZIP")
         except Exception as e:
@@ -281,69 +266,67 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
         usage_stats = {}
 
         try:
-            # Extract DB to temp file
-            if not self.temp_dir:
-                self.temp_dir = tempfile.mkdtemp(prefix='yaft_ios_')
+            # Query iOS 12+ schema with fallback for older versions
+            primary_query = """
+                SELECT
+                    ZOBJECT.ZVALUESTRING as bundle_id,
+                    ZOBJECT.ZSTARTDATE as start_date,
+                    ZOBJECT.ZENDDATE as end_date,
+                    ZOBJECT.ZSTREAMNAME as stream_name
+                FROM ZOBJECT
+                WHERE ZSTREAMNAME LIKE '%/app/%'
+                   OR ZSTREAMNAME = '/app/inFocus'
+                   OR ZSTREAMNAME = '/app/usage'
+                ORDER BY ZOBJECT.ZSTARTDATE DESC
+                LIMIT 10000
+            """
 
-            temp_db_path = Path(self.temp_dir) / 'knowledgeC.db'
+            fallback_query = """
+                SELECT
+                    ZOBJECT.ZVALUESTRING as bundle_id,
+                    ZOBJECT.ZSTARTDATE as start_date,
+                    ZOBJECT.ZENDDATE as end_date,
+                    NULL as stream_name
+                FROM ZOBJECT
+                WHERE ZSTREAMNAME LIKE '%app%'
+                ORDER BY ZOBJECT.ZSTARTDATE DESC
+                LIMIT 10000
+            """
 
-            content = self.core_api.read_zip_file(self._normalize_path(db_path))
-            temp_db_path.write_bytes(content)
+            events = self.core_api.query_sqlite_from_zip(
+                self._normalize_path(db_path),
+                primary_query,
+                fallback_query=fallback_query
+            )
 
-            conn = sqlite3.connect(str(temp_db_path))
-            cursor = conn.cursor()
+            for bundle_id, start_date, end_date, stream_name in events:
+                if not bundle_id:
+                    continue
 
-            # Try iOS 12+ schema
-            try:
-                cursor.execute("""
-                    SELECT
-                        ZOBJECT.ZVALUESTRING as bundle_id,
-                        ZOBJECT.ZSTARTDATE as start_date,
-                        ZOBJECT.ZENDDATE as end_date,
-                        ZOBJECT.ZSTREAMNAME as stream_name
-                    FROM ZOBJECT
-                    WHERE ZSTREAMNAME LIKE '%/app/%'
-                       OR ZSTREAMNAME = '/app/inFocus'
-                       OR ZSTREAMNAME = '/app/usage'
-                    ORDER BY ZOBJECT.ZSTARTDATE DESC
-                    LIMIT 10000
-                """)
+                if bundle_id not in usage_stats:
+                    usage_stats[bundle_id] = {
+                        'bundle_id': bundle_id,
+                        'total_launches': 0,
+                        'total_duration_seconds': 0,
+                        'first_used': None,
+                        'last_used': None,
+                    }
 
-                events = cursor.fetchall()
+                if start_date and end_date:
+                    duration = end_date - start_date
 
-                for bundle_id, start_date, end_date, stream_name in events:
-                    if not bundle_id:
-                        continue
+                    try:
+                        core_data_epoch = datetime(2001, 1, 1)
+                        start_time = core_data_epoch + timedelta(seconds=start_date)
 
-                    if bundle_id not in usage_stats:
-                        usage_stats[bundle_id] = {
-                            'bundle_id': bundle_id,
-                            'total_launches': 0,
-                            'total_duration_seconds': 0,
-                            'first_used': None,
-                            'last_used': None,
-                        }
+                        usage_stats[bundle_id]['total_duration_seconds'] += duration
+                        usage_stats[bundle_id]['total_launches'] += 1
 
-                    if start_date and end_date:
-                        duration = end_date - start_date
-
-                        try:
-                            core_data_epoch = datetime(2001, 1, 1)
-                            start_time = core_data_epoch + timedelta(seconds=start_date)
-
-                            usage_stats[bundle_id]['total_duration_seconds'] += duration
-                            usage_stats[bundle_id]['total_launches'] += 1
-
-                            if not usage_stats[bundle_id]['first_used']:
-                                usage_stats[bundle_id]['first_used'] = start_time.strftime('%Y-%m-%d %H:%M:%S')
-                            usage_stats[bundle_id]['last_used'] = start_time.strftime('%Y-%m-%d %H:%M:%S')
-                        except:
-                            pass
-
-            except sqlite3.OperationalError as e:
-                self.core_api.log_warning(f"knowledgeC.db schema not recognized: {e}")
-
-            conn.close()
+                        if not usage_stats[bundle_id]['first_used']:
+                            usage_stats[bundle_id]['first_used'] = start_time.strftime('%Y-%m-%d %H:%M:%S')
+                        usage_stats[bundle_id]['last_used'] = start_time.strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        pass
 
             # Calculate aggregate stats
             for bundle_id, stats in usage_stats.items():
@@ -367,8 +350,7 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
         notification_data = {}
 
         try:
-            content = self.core_api.read_zip_file(self._normalize_path(plist_path))
-            data = plistlib.loads(content)
+            data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
 
             for bundle_id, app_data in data.items():
                 if not isinstance(app_data, dict):
@@ -593,10 +575,4 @@ class iOSAppPermissionsExtractorPlugin(PluginBase):
 
     def cleanup(self) -> None:
         """Clean up temporary resources."""
-        if self.temp_dir and Path(self.temp_dir).exists():
-            try:
-                shutil.rmtree(self.temp_dir)
-            except:
-                pass
-
         self.core_api.log_info(f"Cleaning up {self.metadata.name}")

@@ -180,6 +180,23 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     self.core_api.extract_all_zip(Path("output"))
     self.core_api.display_zip_contents()
 
+    # Plist parsing (iOS forensics)
+    plist_data = self.core_api.read_plist_from_zip("Info.plist")
+    plist_content = self.core_api.parse_plist(raw_bytes)
+
+    # SQLite querying from ZIP (iOS forensics)
+    rows = self.core_api.query_sqlite_from_zip(
+        "database.db",
+        "SELECT * FROM table WHERE id = ?",
+        params=(123,),
+        fallback_query="SELECT * FROM old_table WHERE id = ?"  # Optional fallback for schema changes
+    )
+    # Or get results as dictionaries with column names
+    dicts = self.core_api.query_sqlite_from_zip_dict(
+        "database.db",
+        "SELECT name, value FROM settings"
+    )
+
     # Unified markdown report generation
     sections = [
         {"heading": "Summary", "content": "Analysis completed"},

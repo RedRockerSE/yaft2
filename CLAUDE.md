@@ -36,6 +36,8 @@ CLI (Presentation) → Plugin Manager (Application) → Core API (Service) → P
 2. **Core API** (`src/yaft/core/api.py`)
    - Service layer providing shared functionality
    - **ZIP file handling**: load, read, extract, analyze ZIP archives
+   - **Plist parsing**: parse plist files from ZIP archives (iOS forensics)
+   - **SQLite querying**: execute SQL queries on databases from ZIP archives (iOS forensics)
    - Logging, file I/O, user input, configuration management
    - Inter-plugin communication via shared data store
 
@@ -63,6 +65,53 @@ self.core_api.extract_zip_file("file.txt", output_dir)  # Extract single file
 self.core_api.extract_all_zip(output_dir)  # Extract all files
 self.core_api.display_zip_contents()  # Display formatted table
 ```
+
+## Plist and SQLite Support (iOS Forensics)
+
+The Core API provides built-in support for parsing plist files and querying SQLite databases from ZIP archives. This eliminates the need for plugins to manage temporary files manually.
+
+### Plist Parsing
+
+```python
+# Parse plist from ZIP (returns dict or list)
+data = self.core_api.read_plist_from_zip("path/to/file.plist")
+
+# Or parse plist from bytes
+raw_content = self.core_api.read_zip_file("file.plist")
+data = self.core_api.parse_plist(raw_content)
+```
+
+### SQLite Querying
+
+```python
+# Query database from ZIP (returns list of tuples)
+rows = self.core_api.query_sqlite_from_zip(
+    "path/to/database.db",
+    "SELECT name, value FROM settings WHERE id = ?",
+    params=(123,)
+)
+
+# Query with fallback for schema differences (e.g., iOS versions)
+rows = self.core_api.query_sqlite_from_zip(
+    "TCC.db",
+    "SELECT service, client, auth_value, last_modified FROM access",
+    fallback_query="SELECT service, client, auth_value, NULL FROM access"  # Older iOS schema
+)
+
+# Query and get results as dictionaries with column names
+dicts = self.core_api.query_sqlite_from_zip_dict(
+    "database.db",
+    "SELECT * FROM apps WHERE bundle_id LIKE ?",
+    params=("com.apple.%",)
+)
+# Returns: [{"id": 1, "bundle_id": "com.apple.safari", ...}, ...]
+```
+
+**Benefits:**
+- Automatic temporary file management (created and cleaned up automatically)
+- Support for fallback queries (useful for iOS version differences)
+- No need for `tempfile`, `sqlite3`, or `plistlib` imports in plugins
+- Consistent error handling across all plugins
 
 ## Unified Report Generation
 

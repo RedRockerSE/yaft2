@@ -7,11 +7,7 @@ including bundle identifiers, container GUIDs, and app information.
 Based on forensic research of iOS file structures and databases.
 """
 
-import sqlite3
-import plistlib
 import re
-import tempfile
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,7 +25,6 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
     def __init__(self, core_api: CoreAPI) -> None:
         super().__init__(core_api)
         self.apps: List[Dict] = []
-        self.temp_dir: Optional[str] = None
         self.zip_prefix = ''
 
     @property
@@ -48,7 +43,6 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
         """Initialize the plugin."""
         self.core_api.log_info(f"Initializing {self.metadata.name}")
         self.apps = []
-        self.temp_dir = None
 
     def execute(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
         """
@@ -145,8 +139,7 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
         apps = {}
 
         try:
-            content = self.core_api.read_zip_file(self._normalize_path(plist_path))
-            data = plistlib.loads(content)
+            data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
 
             for bundle_id, app_data in data.items():
                 if not isinstance(app_data, dict):
@@ -186,26 +179,14 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
         bundle_ids = []
 
         try:
-            # Extract DB to temp file (SQLite can't read from ZIP directly)
-            if not self.temp_dir:
-                self.temp_dir = tempfile.mkdtemp(prefix='yaft_ios_')
-
-            temp_db_path = Path(self.temp_dir) / 'applicationState.db'
-
-            content = self.core_api.read_zip_file(self._normalize_path(db_path))
-            temp_db_path.write_bytes(content)
-
-            conn = sqlite3.connect(str(temp_db_path))
-            cursor = conn.cursor()
-
-            cursor.execute("""
+            query = """
                 SELECT application_identifier
                 FROM application_identifier_tab
                 ORDER BY application_identifier
-            """)
+            """
 
-            bundle_ids = [row[0] for row in cursor.fetchall()]
-            conn.close()
+            results = self.core_api.query_sqlite_from_zip(self._normalize_path(db_path), query)
+            bundle_ids = [row[0] for row in results]
 
         except KeyError:
             self.core_api.log_warning("applicationState.db not found in ZIP")
@@ -249,8 +230,7 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
                     info_plist_path = f"{bundle_app_path}/{guid}/{app_name}/Info.plist"
 
                     try:
-                        content = self.core_api.read_zip_file(self._normalize_path(info_plist_path))
-                        info = plistlib.loads(content)
+                        info = self.core_api.read_plist_from_zip(self._normalize_path(info_plist_path))
 
                         bundle_id = info.get('CFBundleIdentifier')
                         if bundle_id:
@@ -414,10 +394,4 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
 
     def cleanup(self) -> None:
         """Clean up temporary resources."""
-        if self.temp_dir and Path(self.temp_dir).exists():
-            try:
-                shutil.rmtree(self.temp_dir)
-            except:
-                pass
-
         self.core_api.log_info(f"Cleaning up {self.metadata.name}")

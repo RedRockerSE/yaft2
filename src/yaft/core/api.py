@@ -5,6 +5,9 @@ This module exposes common services and utilities that plugins can use.
 """
 
 import logging
+import plistlib
+import sqlite3
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -421,6 +424,176 @@ class CoreAPI:
                 return f"{size:.2f} {unit}"
             size /= 1024.0
         return f"{size:.2f} PB"
+
+    # ========== Plist Parsing Methods ==========
+
+    def parse_plist(self, content: bytes) -> Any:
+        """
+        Parse plist content from bytes.
+
+        Args:
+            content: Plist file content as bytes
+
+        Returns:
+            Any: Parsed plist data (usually dict or list)
+
+        Raises:
+            Exception: If plist parsing fails
+        """
+        try:
+            return plistlib.loads(content)
+        except Exception as e:
+            self.log_error(f"Failed to parse plist: {e}")
+            raise
+
+    def read_plist_from_zip(self, path: str) -> Any:
+        """
+        Read and parse a plist file from the current ZIP archive.
+
+        Args:
+            path: Path to plist file within the ZIP archive
+
+        Returns:
+            Any: Parsed plist data (usually dict or list)
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If file is not found in ZIP
+            Exception: If plist parsing fails
+        """
+        content = self.read_zip_file(path)
+        return self.parse_plist(content)
+
+    # ========== SQLite Database Methods ==========
+
+    def query_sqlite_from_zip(
+        self,
+        db_path: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None
+    ) -> list[tuple]:
+        """
+        Execute SQL query on a SQLite database from the ZIP archive.
+
+        This method extracts the database to a temporary file, executes the query,
+        and returns the results as a list of tuples.
+
+        Args:
+            db_path: Path to SQLite database within the ZIP archive
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails (e.g., for schema differences)
+
+        Returns:
+            list[tuple]: Query results as list of tuples
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            sqlite3.Error: If database query fails
+        """
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Query the database
+            conn = sqlite3.connect(str(temp_db_path))
+            cursor = conn.cursor()
+
+            try:
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    results = cursor.fetchall()
+                else:
+                    raise
+
+            conn.close()
+            return results
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
+
+    def query_sqlite_from_zip_dict(
+        self,
+        db_path: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None
+    ) -> list[dict[str, Any]]:
+        """
+        Execute SQL query on a SQLite database from ZIP and return results as dictionaries.
+
+        This method extracts the database to a temporary file, executes the query,
+        and returns the results as a list of dictionaries with column names as keys.
+
+        Args:
+            db_path: Path to SQLite database within the ZIP archive
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails
+
+        Returns:
+            list[dict[str, Any]]: Query results as list of dictionaries
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            sqlite3.Error: If database query fails
+        """
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Query the database with row_factory
+            conn = sqlite3.connect(str(temp_db_path))
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            try:
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                results = [dict(row) for row in rows]
+            except sqlite3.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    rows = cursor.fetchall()
+                    results = [dict(row) for row in rows]
+                else:
+                    raise
+
+            conn.close()
+            return results
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
 
     # ========== Report Generation Methods ==========
 
