@@ -14,3 +14,6 @@ The App is called YaFT which stands for: Yet Another Forensic Tool
 
 ### Added requirements 2025-11-05
 - Core API should contain a report-method that plugins can call for a unified way of creating reports with findings and/or results. Report-format should be in markdown. Update all existing plugins to use this for reporting.
+
+### Added requirements 2025-11-06
+- iOSAppGUIDExtractorPlugin and iOSAppPermissionsExtractorPlugin currently depends on plistlib and sqlite3. Research and implement (if doable) the move of methods, using these dependencies, to the core-api. There might be future plugins that needs to parse plists and query sqlite-databases so this should be functionality exposed by the core-api. 
