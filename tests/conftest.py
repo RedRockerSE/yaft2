@@ -20,7 +20,13 @@ def temp_dir():
 def core_api(temp_dir):
     """Create a CoreAPI instance for testing."""
     config_dir = temp_dir / "config"
-    return CoreAPI(config_dir=config_dir)
+    api = CoreAPI(config_dir=config_dir)
+
+    yield api
+
+    # Clean up ZIP file handle if open
+    if api._zip_handle:
+        api.close_zip()
 
 
 @pytest.fixture

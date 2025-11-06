@@ -85,7 +85,7 @@ def test_load_plugin(plugin_manager, plugin_dir):
     assert plugin is not None
     assert plugin.metadata.name == "TestDiscovery"
     assert plugin.status == PluginStatus.INITIALIZED
-    assert "TestDiscovery" in plugin_manager.plugins
+    assert "TestDiscoveryPlugin" in plugin_manager.plugins
 
 
 def test_load_nonexistent_plugin(plugin_manager):
@@ -118,10 +118,10 @@ def test_unload_plugin(plugin_manager, plugin_dir):
     plugin_manager.load_plugin("TestDiscoveryPlugin")
 
     # Unload plugin
-    success = plugin_manager.unload_plugin("TestDiscovery")
+    success = plugin_manager.unload_plugin("TestDiscoveryPlugin")
 
     assert success is True
-    assert "TestDiscovery" not in plugin_manager.plugins
+    assert "TestDiscoveryPlugin" not in plugin_manager.plugins
 
 
 def test_unload_nonexistent_plugin(plugin_manager):
@@ -139,7 +139,7 @@ def test_get_plugin(plugin_manager, plugin_dir):
     plugin_manager.load_plugin("TestDiscoveryPlugin")
 
     # Get plugin
-    plugin = plugin_manager.get_plugin("TestDiscovery")
+    plugin = plugin_manager.get_plugin("TestDiscoveryPlugin")
 
     assert plugin is not None
     assert plugin.metadata.name == "TestDiscovery"
@@ -154,7 +154,7 @@ def test_execute_plugin(plugin_manager, plugin_dir):
     plugin_manager.load_plugin("TestDiscoveryPlugin")
 
     # Execute plugin
-    result = plugin_manager.execute_plugin("TestDiscovery")
+    result = plugin_manager.execute_plugin("TestDiscoveryPlugin")
 
     assert result == "test_executed"
 
