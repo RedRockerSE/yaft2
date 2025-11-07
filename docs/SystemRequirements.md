@@ -23,3 +23,4 @@ The App is called YaFT which stands for: Yet Another Forensic Tool
 - Zip-files (device-extractions) should support both Cellebrite and GrayKey-format
 - The app should be able to detect what OS an extraction-zip contains (iOS or Android) and should report valid and extensive OS-specific information
 - User should be given the option to run one plugin, multiple selectable plugins or all plugins. Research and suggest the best option to accomplish this. iOS-specific plugins should not run on Android-extractions and Android-specific pluings should not run on iOS-extractions
+- Setup GitHub for automatic build and release
