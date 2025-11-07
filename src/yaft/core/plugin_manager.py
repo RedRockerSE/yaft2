@@ -240,23 +240,114 @@ class PluginManager:
             plugin.status = PluginStatus.ERROR
             raise
 
-    def list_plugins(self, show_all: bool = False) -> None:
+    def is_plugin_compatible(self, plugin_class: type[PluginBase], detected_os: str) -> bool:
+        """
+        Check if a plugin is compatible with the detected OS.
+
+        Args:
+            plugin_class: Plugin class to check
+            detected_os: Detected OS type ("ios", "android", "unknown")
+
+        Returns:
+            bool: True if plugin is compatible, False otherwise
+        """
+        try:
+            # Create temporary instance to get metadata
+            temp_plugin = plugin_class(self.core_api)
+            target_os_list = temp_plugin.metadata.target_os
+
+            # If plugin targets "any", it's always compatible
+            if "any" in target_os_list:
+                return True
+
+            # If OS is unknown, only show "any" plugins
+            if detected_os == "unknown":
+                return False
+
+            # Check if detected OS is in the target list
+            return detected_os in target_os_list
+
+        except Exception:
+            # If we can't determine compatibility, assume it's compatible
+            return True
+
+    def get_compatible_plugins(self, detected_os: str | None = None) -> dict[str, type[PluginBase]]:
+        """
+        Get plugins compatible with the detected OS.
+
+        Args:
+            detected_os: Detected OS type. If None, auto-detects from current ZIP.
+
+        Returns:
+            dict: Dictionary of compatible plugin classes
+        """
+        # Auto-detect OS if not provided and ZIP is loaded
+        if detected_os is None:
+            try:
+                os_type = self.core_api.get_detected_os()
+                detected_os = os_type.value
+            except RuntimeError:
+                # No ZIP loaded, show all plugins
+                detected_os = "any"
+
+        # If no OS detected or no ZIP, show all plugins
+        if detected_os == "any":
+            return self._plugin_classes
+
+        # Filter plugins by compatibility
+        compatible = {}
+        for name, plugin_class in self._plugin_classes.items():
+            if self.is_plugin_compatible(plugin_class, detected_os):
+                compatible[name] = plugin_class
+
+        return compatible
+
+    def list_plugins(self, show_all: bool = False, filter_by_os: bool = False) -> None:
         """
         Display a formatted list of plugins.
 
         Args:
             show_all: If True, show all discovered plugins. If False, show only loaded.
+            filter_by_os: If True, filter plugins by detected OS compatibility.
         """
-        table = Table(title="Available Plugins" if show_all else "Loaded Plugins")
+        # Get OS detection info if filtering is enabled
+        os_info_str = ""
+        if filter_by_os:
+            try:
+                extraction_info = self.core_api.get_extraction_info()
+                os_type = extraction_info["os_type"]
+                os_version = extraction_info["os_version"]
+                if os_version:
+                    os_info_str = f" (Detected: {os_type.upper()} {os_version})"
+                else:
+                    os_info_str = f" (Detected: {os_type.upper()})"
+            except RuntimeError:
+                os_info_str = " (No ZIP loaded)"
+                filter_by_os = False
+
+        table_title = "Available Plugins" if show_all else "Loaded Plugins"
+        table_title += os_info_str
+        table = Table(title=table_title)
 
         table.add_column("Name", style="cyan", no_wrap=True)
         table.add_column("Version", style="magenta")
         table.add_column("Status", style="green")
+        table.add_column("Target OS", style="yellow")
         table.add_column("Description", style="white")
 
-        plugins_to_show = (
-            self._plugin_classes.items() if show_all else [(k, v) for k, v in self._plugin_classes.items() if k in self.plugins or any(p.__class__.__name__ == k for p in self.plugins.values())]
-        )
+        # Get plugins to show
+        if filter_by_os:
+            # Filter by OS compatibility
+            compatible_plugins = self.get_compatible_plugins()
+            plugins_to_show = compatible_plugins.items() if show_all else [
+                (k, v) for k, v in compatible_plugins.items()
+                if k in self.plugins or any(p.__class__.__name__ == k for p in self.plugins.values())
+            ]
+        else:
+            # No filtering
+            plugins_to_show = (
+                self._plugin_classes.items() if show_all else [(k, v) for k, v in self._plugin_classes.items() if k in self.plugins or any(p.__class__.__name__ == k for p in self.plugins.values())]
+            )
 
         for plugin_name, plugin_class in plugins_to_show:
             # Try to get instance metadata if loaded, otherwise create temporary instance
@@ -290,10 +381,14 @@ class PluginManager:
                 "disabled": "dim",
             }.get(status, "white")
 
+            # Format target OS list
+            target_os_str = ", ".join(metadata.target_os)
+
             table.add_row(
                 metadata.name,
                 metadata.version,
                 f"[{status_color}]{status}[/{status_color}]",
+                target_os_str,
                 metadata.description,
             )
 

@@ -9,12 +9,21 @@ import plistlib
 import sqlite3
 import tempfile
 import zipfile
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
+
+
+class ExtractionOS(str, Enum):
+    """Operating system type detected in extraction."""
+
+    UNKNOWN = "unknown"
+    IOS = "ios"
+    ANDROID = "android"
 
 
 class CoreAPI:
@@ -52,11 +61,12 @@ class CoreAPI:
         # Current ZIP file being analyzed
         self._current_zip: Path | None = None
         self._zip_handle: zipfile.ZipFile | None = None
+        self._detected_os: ExtractionOS = ExtractionOS.UNKNOWN
 
         # Case identifiers for forensic analysis
-        self._u_nummer: str | None = None
-        self._k_nummer: str | None = None
-        self._bg_nummer: str | None = None
+        self._examiner_id: str | None = None
+        self._case_id: str | None = None
+        self._evidence_id: str | None = None
 
     def _setup_logging(self) -> None:
         """Configure logging with Rich handler."""
@@ -174,51 +184,53 @@ class CoreAPI:
 
     # ========== Case Identifier Methods ==========
 
-    def validate_u_nummer(self, value: str) -> bool:
+    def validate_examiner_id(self, value: str) -> bool:
         """
-        Validate U-nummer format: u0000000 (7 digits).
+        Validate Examiner ID format: alphanumeric with underscores and hyphens, 2-50 characters.
 
         Args:
-            value: U-nummer to validate
+            value: Examiner ID to validate
 
         Returns:
             bool: True if valid, False otherwise
         """
         import re
-        return bool(re.match(r'^u\d{7}$', value, re.IGNORECASE))
+        return bool(re.match(r'^[A-Za-z0-9_-]{2,50}$', value))
 
-    def validate_k_nummer(self, value: str) -> bool:
+    def validate_case_id(self, value: str) -> bool:
         """
-        Validate K-nummer format: K0000000-00 (8 digits, dash, 2 digits).
+        Validate Case ID format: uppercase alphanumeric with optional dash and numbers.
+        Examples: CASE2024-01, K2024001-01, 2024-001
 
         Args:
-            value: K-nummer to validate
+            value: Case ID to validate
 
         Returns:
             bool: True if valid, False otherwise
         """
         import re
-        return bool(re.match(r'^K\d{7}-\d{2}$', value, re.IGNORECASE))
+        return bool(re.match(r'^[A-Z0-9]{4,}-[0-9]{2,}$', value))
 
-    def validate_bg_nummer(self, value: str) -> bool:
+    def validate_evidence_id(self, value: str) -> bool:
         """
-        Validate BG-nummer format: BG000000-0 (6 digits, dash, 1 digit).
+        Validate Evidence ID format: 2-4 uppercase letters followed by 4-8 digits, dash, 1-2 digits.
+        Examples: BG123456-1, EV123456-1, ITEM1234-01
 
         Args:
-            value: BG-nummer to validate
+            value: Evidence ID to validate
 
         Returns:
             bool: True if valid, False otherwise
         """
         import re
-        return bool(re.match(r'^BG\d{6}-\d$', value, re.IGNORECASE))
+        return bool(re.match(r'^[A-Z]{2,4}[0-9]{4,8}-[0-9]{1,2}$', value))
 
     def prompt_for_case_identifiers(self) -> tuple[str, str, str]:
         """
         Prompt user for case identifiers with validation.
 
         Returns:
-            tuple[str, str, str]: (u_nummer, k_nummer, bg_nummer)
+            tuple[str, str, str]: (examiner_id, case_id, evidence_id)
 
         Raises:
             ValueError: If user cancels input (Ctrl+C)
@@ -226,73 +238,76 @@ class CoreAPI:
         self.console.print("\n[bold cyan]Case Information Required[/bold cyan]")
         self.console.print("Please enter the following case identifiers:\n")
 
-        # Prompt for U-nummer
+        # Prompt for Examiner ID
         while True:
-            u_nummer = self.console.input("[bold cyan]?[/bold cyan] U-nummer (format: u0000000): ").strip()
-            if self.validate_u_nummer(u_nummer):
-                u_nummer = u_nummer.lower()  # Normalize to lowercase
+            examiner_id = self.console.input("[bold cyan]?[/bold cyan] Examiner ID (alphanumeric, 2-50 chars): ").strip()
+            if self.validate_examiner_id(examiner_id):
                 break
-            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: u followed by 7 digits (e.g., u1234567)")
+            self.console.print("[bold red]✗[/bold red] Invalid format. Use alphanumeric characters, underscores, or hyphens (e.g., john_doe, examiner-123)")
 
-        # Prompt for K-nummer
+        # Prompt for Case ID
         while True:
-            k_nummer = self.console.input("[bold cyan]?[/bold cyan] K-nummer (format: K0000000-00): ").strip()
-            if self.validate_k_nummer(k_nummer):
-                k_nummer = k_nummer.upper()  # Normalize to uppercase
+            case_id = self.console.input("[bold cyan]?[/bold cyan] Case ID (format: CASE2024-01): ").strip()
+            if self.validate_case_id(case_id):
+                case_id = case_id.upper()  # Normalize to uppercase
                 break
-            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: K followed by 7 digits, dash, 2 digits (e.g., K1234567-01)")
+            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: 4+ uppercase alphanumeric, dash, 2+ digits (e.g., CASE2024-01, K2024001-01)")
 
-        # Prompt for BG-nummer
+        # Prompt for Evidence ID
         while True:
-            bg_nummer = self.console.input("[bold cyan]?[/bold cyan] BG-nummer (format: BG000000-0): ").strip()
-            if self.validate_bg_nummer(bg_nummer):
-                bg_nummer = bg_nummer.upper()  # Normalize to uppercase
+            evidence_id = self.console.input("[bold cyan]?[/bold cyan] Evidence ID (format: BG123456-1): ").strip()
+            if self.validate_evidence_id(evidence_id):
+                evidence_id = evidence_id.upper()  # Normalize to uppercase
                 break
-            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: BG followed by 6 digits, dash, 1 digit (e.g., BG123456-1)")
+            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: 2-4 letters, 4-8 digits, dash, 1-2 digits (e.g., BG123456-1, EV1234-01)")
 
         # Store identifiers
-        self._u_nummer = u_nummer
-        self._k_nummer = k_nummer
-        self._bg_nummer = bg_nummer
+        self._examiner_id = examiner_id
+        self._case_id = case_id
+        self._evidence_id = evidence_id
 
         self.console.print(f"\n[bold green]✓[/bold green] Case identifiers set:")
-        self.console.print(f"  U-nummer:  {u_nummer}")
-        self.console.print(f"  K-nummer:  {k_nummer}")
-        self.console.print(f"  BG-nummer: {bg_nummer}\n")
+        self.console.print(f"  Examiner ID:  {examiner_id}")
+        self.console.print(f"  Case ID:      {case_id}")
+        self.console.print(f"  Evidence ID:  {evidence_id}\n")
 
-        return u_nummer, k_nummer, bg_nummer
+        return examiner_id, case_id, evidence_id
 
     def get_case_identifiers(self) -> tuple[str | None, str | None, str | None]:
         """
         Get stored case identifiers.
 
         Returns:
-            tuple[str | None, str | None, str | None]: (u_nummer, k_nummer, bg_nummer)
+            tuple[str | None, str | None, str | None]: (examiner_id, case_id, evidence_id)
         """
-        return self._u_nummer, self._k_nummer, self._bg_nummer
+        return self._examiner_id, self._case_id, self._evidence_id
 
-    def set_case_identifiers(self, u_nummer: str, k_nummer: str, bg_nummer: str) -> None:
+    def set_case_identifiers(self, examiner_id: str, case_id: str, evidence_id: str) -> None:
         """
         Set case identifiers programmatically (for testing).
 
         Args:
-            u_nummer: U-nummer
-            k_nummer: K-nummer
-            bg_nummer: BG-nummer
+            examiner_id: Examiner ID
+            case_id: Case ID
+            evidence_id: Evidence ID
 
         Raises:
             ValueError: If any identifier has invalid format
         """
-        if not self.validate_u_nummer(u_nummer):
-            raise ValueError(f"Invalid U-nummer format: {u_nummer}")
-        if not self.validate_k_nummer(k_nummer):
-            raise ValueError(f"Invalid K-nummer format: {k_nummer}")
-        if not self.validate_bg_nummer(bg_nummer):
-            raise ValueError(f"Invalid BG-nummer format: {bg_nummer}")
+        # Normalize case_id and evidence_id to uppercase before validation
+        case_id_normalized = case_id.upper()
+        evidence_id_normalized = evidence_id.upper()
 
-        self._u_nummer = u_nummer.lower()
-        self._k_nummer = k_nummer.upper()
-        self._bg_nummer = bg_nummer.upper()
+        if not self.validate_examiner_id(examiner_id):
+            raise ValueError(f"Invalid Examiner ID format: {examiner_id}")
+        if not self.validate_case_id(case_id_normalized):
+            raise ValueError(f"Invalid Case ID format: {case_id}")
+        if not self.validate_evidence_id(evidence_id_normalized):
+            raise ValueError(f"Invalid Evidence ID format: {evidence_id}")
+
+        self._examiner_id = examiner_id
+        self._case_id = case_id_normalized
+        self._evidence_id = evidence_id_normalized
 
     def get_case_output_dir(self, subdir: str = "") -> Path:
         """
@@ -302,15 +317,15 @@ class CoreAPI:
             subdir: Optional subdirectory name (e.g., "ios_extractions", "reports")
 
         Returns:
-            Path: Output directory path (yaft_output/<K-nummer>/<BG-nummer>/<subdir>)
+            Path: Output directory path (yaft_output/<case_id>/<evidence_id>/<subdir>)
                   Falls back to yaft_output/<subdir> if case identifiers not set
         """
         base_dir = Path.cwd() / "yaft_output"
 
-        if self._k_nummer and self._bg_nummer:
+        if self._case_id and self._evidence_id:
             if subdir:
-                return base_dir / self._k_nummer / self._bg_nummer / subdir
-            return base_dir / self._k_nummer / self._bg_nummer
+                return base_dir / self._case_id / self._evidence_id / subdir
+            return base_dir / self._case_id / self._evidence_id
         else:
             if subdir:
                 return base_dir / subdir
@@ -395,6 +410,171 @@ class CoreAPI:
             self._zip_handle.close()
             self._zip_handle = None
             self._current_zip = None
+            self._detected_os = ExtractionOS.UNKNOWN
+
+    # ========== OS Detection Methods ==========
+
+    def detect_extraction_os(self) -> ExtractionOS:
+        """
+        Detect operating system type from ZIP file structure.
+
+        Analyzes the ZIP file contents to determine if it's an iOS or Android extraction
+        by looking for characteristic file paths and directory structures.
+
+        Returns:
+            ExtractionOS: Detected OS type (IOS, ANDROID, or UNKNOWN)
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+        """
+        if not self._zip_handle:
+            raise RuntimeError("No ZIP file loaded. Use set_zip_file() first.")
+
+        # Get all file paths from ZIP
+        file_list = [info.filename.lower() for info in self._zip_handle.infolist()]
+
+        # iOS indicators (with and without Cellebrite/GrayKey prefixes)
+        ios_indicators = [
+            "private/var/mobile/",
+            "library/",
+            "applications/",
+            "system/library/frameworks/",
+            "system/library/coreservices/",
+            "/private/var/mobile/",
+            "/library/",
+            "/applications/",
+            "systemversion.plist",
+        ]
+
+        # Android indicators
+        android_indicators = [
+            "data/data/",
+            "data/app/",
+            "system/app/",
+            "system/framework/",
+            "data/system/",
+            "/data/data/",
+            "/data/app/",
+            "/system/app/",
+            "build.prop",
+        ]
+
+        # Count matches for each OS
+        ios_matches = sum(1 for indicator in ios_indicators if any(indicator in path for path in file_list))
+        android_matches = sum(1 for indicator in android_indicators if any(indicator in path for path in file_list))
+
+        # Determine OS based on strongest match (require at least 2 matches for confidence)
+        if ios_matches >= 2 and ios_matches > android_matches:
+            self._detected_os = ExtractionOS.IOS
+        elif android_matches >= 2 and android_matches > ios_matches:
+            self._detected_os = ExtractionOS.ANDROID
+        else:
+            self._detected_os = ExtractionOS.UNKNOWN
+
+        return self._detected_os
+
+    def get_detected_os(self) -> ExtractionOS:
+        """
+        Get the detected OS type for the current extraction.
+
+        Returns the cached OS detection result. If detection hasn't been run yet,
+        it will be performed automatically.
+
+        Returns:
+            ExtractionOS: Detected OS type
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+        """
+        if not self._zip_handle:
+            raise RuntimeError("No ZIP file loaded. Use set_zip_file() first.")
+
+        if self._detected_os == ExtractionOS.UNKNOWN:
+            return self.detect_extraction_os()
+
+        return self._detected_os
+
+    def get_ios_version(self) -> str | None:
+        """
+        Extract iOS version from SystemVersion.plist.
+
+        Returns:
+            str | None: iOS version string (e.g., "15.4.1") or None if not found
+        """
+        if self._detected_os != ExtractionOS.IOS:
+            return None
+
+        # Try multiple possible locations (with/without prefixes)
+        possible_paths = [
+            "System/Library/CoreServices/SystemVersion.plist",
+            "filesystem/System/Library/CoreServices/SystemVersion.plist",
+            "filesystem1/System/Library/CoreServices/SystemVersion.plist",
+        ]
+
+        for path in possible_paths:
+            try:
+                plist_data = self.read_plist_from_zip(path)
+                return plist_data.get("ProductVersion")
+            except (KeyError, Exception):
+                continue
+
+        return None
+
+    def get_android_version(self) -> str | None:
+        """
+        Extract Android version from build.prop.
+
+        Returns:
+            str | None: Android version string (e.g., "12") or None if not found
+        """
+        if self._detected_os != ExtractionOS.ANDROID:
+            return None
+
+        # Try multiple possible locations
+        possible_paths = [
+            "system/build.prop",
+            "filesystem/system/build.prop",
+        ]
+
+        for path in possible_paths:
+            try:
+                content = self.read_zip_file_text(path)
+                for line in content.split('\n'):
+                    if line.startswith('ro.build.version.release='):
+                        return line.split('=', 1)[1].strip()
+            except (KeyError, Exception):
+                continue
+
+        return None
+
+    def get_extraction_info(self) -> dict[str, Any]:
+        """
+        Get comprehensive extraction information including OS type and version.
+
+        Returns:
+            dict[str, Any]: Dictionary containing:
+                - os_type: Detected OS (ios, android, unknown)
+                - os_version: OS version string if available
+                - detection_confidence: Detection confidence indicator
+        """
+        os_type = self.get_detected_os()
+
+        info = {
+            "os_type": os_type.value,
+            "os_version": None,
+            "detection_confidence": "unknown"
+        }
+
+        if os_type == ExtractionOS.IOS:
+            info["os_version"] = self.get_ios_version()
+            info["detection_confidence"] = "high" if info["os_version"] else "medium"
+        elif os_type == ExtractionOS.ANDROID:
+            info["os_version"] = self.get_android_version()
+            info["detection_confidence"] = "high" if info["os_version"] else "medium"
+
+        return info
+
+    # ========== End OS Detection Methods ==========
 
     def list_zip_contents(self) -> list[zipfile.ZipInfo]:
         """
@@ -801,9 +981,9 @@ class CoreAPI:
 
         # Setup output directory with case-based structure
         if output_dir is None:
-            # Use case identifiers for path structure: yaft_output/<K-nummer>/<BG-nummer>/reports
-            if self._k_nummer and self._bg_nummer:
-                output_dir = Path.cwd() / "yaft_output" / self._k_nummer / self._bg_nummer / "reports"
+            # Use case identifiers for path structure: yaft_output/<case_id>/<evidence_id>/reports
+            if self._case_id and self._evidence_id:
+                output_dir = Path.cwd() / "yaft_output" / self._case_id / self._evidence_id / "reports"
             else:
                 # Fallback to default if identifiers not set
                 output_dir = Path.cwd() / "yaft_output" / "reports"
@@ -830,12 +1010,12 @@ class CoreAPI:
         lines.append(f"- **Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
         # Add case identifiers if set
-        if self._u_nummer:
-            lines.append(f"- **U-nummer**: {self._u_nummer}")
-        if self._k_nummer:
-            lines.append(f"- **K-nummer**: {self._k_nummer}")
-        if self._bg_nummer:
-            lines.append(f"- **BG-nummer**: {self._bg_nummer}")
+        if self._examiner_id:
+            lines.append(f"- **Examiner ID**: {self._examiner_id}")
+        if self._case_id:
+            lines.append(f"- **Case ID**: {self._case_id}")
+        if self._evidence_id:
+            lines.append(f"- **Evidence ID**: {self._evidence_id}")
 
         if self._current_zip:
             lines.append(f"- **Source ZIP**: {self._current_zip.name}")

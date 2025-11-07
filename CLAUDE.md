@@ -36,7 +36,7 @@ CLI (Presentation) → Plugin Manager (Application) → Core API (Service) → P
 2. **Core API** (`src/yaft/core/api.py`)
    - Service layer providing shared functionality
    - **ZIP file handling**: load, read, extract, analyze ZIP archives
-   - **Case identifier management**: Swedish forensic case identifiers (U-nummer, K-nummer, BG-nummer)
+   - **Case identifier management**: Forensic case identifiers (Examiner ID, Case ID, Evidence ID)
    - **Plist parsing**: parse plist files from ZIP archives (iOS forensics)
    - **SQLite querying**: execute SQL queries on databases from ZIP archives (iOS forensics)
    - Logging, file I/O, user input, configuration management
@@ -52,33 +52,33 @@ CLI (Presentation) → Plugin Manager (Application) → Core API (Service) → P
    - Commands: list-plugins, info, load, unload, run, reload
    - `run` command accepts `--zip` option for forensic analysis
 
-## Case Identifier Management (Swedish Forensics)
+## Case Identifier Management
 
-YaFT includes built-in support for Swedish forensic case identifier management. The CLI automatically prompts for case identifiers when running plugins, and these are included in reports and used to organize output files.
+YaFT includes built-in support for forensic case identifier management. The CLI automatically prompts for case identifiers when running plugins, and these are included in reports and used to organize output files.
 
 ### Case Identifier Formats
 
-- **U-nummer**: User/investigator identifier (format: `u0000000` - lowercase u + 7 digits)
-- **K-nummer**: Case number (format: `K0000000-00` - uppercase K + 7 digits + dash + 2 digits)
-- **BG-nummer**: Evidence number (format: `BG000000-0` - uppercase BG + 6 digits + dash + 1 digit)
+- **Examiner ID**: User/investigator identifier (format: alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
+- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`, `K2024001-01`)
+- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `BG123456-1`, `EV123456-01`)
 
 ### Core API Methods
 
 ```python
 # Validation (returns True/False)
-self.core_api.validate_u_nummer("u1234567")
-self.core_api.validate_k_nummer("K2024001-01")
-self.core_api.validate_bg_nummer("BG123456-1")
+self.core_api.validate_examiner_id("john_doe")
+self.core_api.validate_case_id("CASE2024-01")
+self.core_api.validate_evidence_id("BG123456-1")
 
 # Set case identifiers programmatically
-self.core_api.set_case_identifiers("u1234567", "K2024001-01", "BG123456-1")
+self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "BG123456-1")
 
 # Get current case identifiers (returns tuple of strings or None values)
-u, k, bg = self.core_api.get_case_identifiers()
+examiner, case, evidence = self.core_api.get_case_identifiers()
 
 # Get case-based output directory (automatically uses case identifiers if set)
 output_dir = self.core_api.get_case_output_dir("ios_extractions")
-# Returns: yaft_output/K2024001-01/BG123456-1/ios_extractions
+# Returns: yaft_output/CASE2024-01/BG123456-1/ios_extractions
 # Or falls back to: yaft_output/ios_extractions (if identifiers not set)
 ```
 
@@ -87,8 +87,8 @@ output_dir = self.core_api.get_case_output_dir("ios_extractions")
 When case identifiers are set, all plugin outputs are organized in case-based directories:
 ```
 yaft_output/
-├── K2024001-01/              # Case number
-│   └── BG123456-1/           # Evidence number
+├── CASE2024-01/              # Case ID
+│   └── BG123456-1/           # Evidence ID
 │       ├── reports/          # Generated reports (includes case IDs in metadata)
 │       └── ios_extractions/  # Plugin-specific outputs
 ```
@@ -378,10 +378,10 @@ python -m yaft.cli run iOSAppPermissionsExtractorPlugin --zip ios_extraction.zip
 - **Plugin Naming**: Plugins are registered and accessed by **class name** (e.g., `iOSAppGUIDExtractorPlugin`), not metadata name
 - **Error Handling**: Plugins fail gracefully; errors don't crash the app
 - **Forensic Focus**: Plugins should assume they're processing evidence and handle data carefully
-- **Case Identifiers**: CLI prompts for Swedish case identifiers (U-nummer, K-nummer, BG-nummer) before plugin execution
+- **Case Identifiers**: CLI prompts for case identifiers (Examiner ID, Case ID, Evidence ID) before plugin execution
 - **Output Directory**: Use `core_api.get_case_output_dir(subdir)` for case-organized output paths (falls back to `yaft_output/` if no case IDs)
 - **Report Generation**: All plugins MUST use `core_api.generate_report()` for consistent markdown reporting
-- **Report Location**: Reports are saved to `yaft_output/K-nummer/BG-nummer/reports/` with case identifiers in metadata
+- **Report Location**: Reports are saved to `yaft_output/<case_id>/<evidence_id>/reports/` with case identifiers in metadata
 - **iOS Analysis**: iOS plugins use temporary directories for SQLite database extraction (auto-cleaned)
 - **Windows Compatibility**: CoreAPI uses ASCII-safe output markers ([OK], [ERROR], [WARNING], [INFO]) instead of Unicode symbols for Windows console compatibility
 

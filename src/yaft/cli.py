@@ -64,6 +64,7 @@ def version() -> None:
 @app.command()
 def list_plugins(
     all: Annotated[bool, typer.Option("--all", "-a", help="Show all discovered plugins")] = False,
+    filter_os: Annotated[bool, typer.Option("--filter-os", "-f", help="Filter plugins by detected OS (requires ZIP)")] = False,
 ) -> None:
     """List available plugins."""
     plugin_manager = get_plugin_manager()
@@ -73,7 +74,7 @@ def list_plugins(
         console.print("[yellow]Discovering plugins...[/yellow]")
         plugin_manager.discover_plugins()
 
-    plugin_manager.list_plugins(show_all=all)
+    plugin_manager.list_plugins(show_all=all, filter_by_os=filter_os)
 
     # Show statistics
     stats = plugin_manager.get_plugin_count()
@@ -121,13 +122,39 @@ def unload(
 
 @app.command()
 def run(
-    plugin_name: Annotated[str, typer.Argument(help="Name of the plugin to run")],
+    plugin_name: Annotated[Optional[str], typer.Argument(help="Name of the plugin to run (optional if using --plugins, --all, or --os)")] = None,
     zip_file: Annotated[Optional[Path], typer.Option("--zip", "-z", help="ZIP file to analyze")] = None,
-    args: Annotated[Optional[list[str]], typer.Argument(help="Arguments to pass to the plugin")] = None,
+    plugins: Annotated[Optional[str], typer.Option("--plugins", "-p", help="Comma-separated list of plugin names to run")] = None,
+    run_all: Annotated[bool, typer.Option("--all", help="Run all compatible plugins (filters by OS if ZIP provided)")] = False,
+    os_filter: Annotated[Optional[str], typer.Option("--os", help="Run plugins for specific OS (ios/android)")] = None,
+    args: Annotated[Optional[list[str]], typer.Argument(help="Arguments to pass to the plugin(s)")] = None,
 ) -> None:
-    """Load and execute a plugin, optionally with a ZIP file for forensic analysis."""
+    """Load and execute one or more plugins, optionally with a ZIP file for forensic analysis.
+
+    Examples:
+        # Run single plugin
+        yaft run HelloWorldPlugin
+
+        # Run multiple specific plugins
+        yaft run --zip evidence.zip --plugins iOSAppGUIDExtractorPlugin,iOSAppPermissionsExtractorPlugin
+
+        # Run all compatible plugins (auto-detects OS from ZIP)
+        yaft run --zip evidence.zip --all
+
+        # Run all iOS plugins
+        yaft run --zip evidence.zip --os ios
+    """
     core_api = get_core_api()
     plugin_manager = get_plugin_manager()
+
+    # Validate arguments
+    mode_count = sum([bool(plugin_name), bool(plugins), run_all, bool(os_filter)])
+    if mode_count == 0:
+        core_api.print_error("Must specify plugin_name, --plugins, --all, or --os")
+        raise typer.Exit(code=1)
+    if mode_count > 1:
+        core_api.print_error("Cannot combine plugin_name, --plugins, --all, and --os options")
+        raise typer.Exit(code=1)
 
     # Prompt for case identifiers
     try:
@@ -144,6 +171,15 @@ def run(
         try:
             core_api.set_zip_file(zip_file)
             core_api.print_success(f"Loaded ZIP file: {zip_file.name}")
+
+            # Detect OS
+            extraction_info = core_api.get_extraction_info()
+            os_type = extraction_info["os_type"]
+            os_version = extraction_info["os_version"]
+            if os_version:
+                core_api.print_info(f"Detected OS: {os_type.upper()} {os_version}")
+            else:
+                core_api.print_info(f"Detected OS: {os_type.upper()}")
         except Exception as e:
             core_api.print_error(f"Failed to load ZIP file: {e}")
             raise typer.Exit(code=1)
@@ -153,32 +189,88 @@ def run(
         core_api.print_info("Discovering plugins...")
         plugin_manager.discover_plugins()
 
-    # Load plugin if not already loaded
-    plugin = plugin_manager.get_plugin(plugin_name)
-    if not plugin:
-        core_api.print_info(f"Loading plugin '{plugin_name}'...")
-        plugin = plugin_manager.load_plugin(plugin_name)
-        if not plugin:
-            core_api.print_error(f"Failed to load plugin '{plugin_name}'")
-            raise typer.Exit(code=1)
+    # Determine which plugins to run
+    plugins_to_run = []
 
-    # Execute plugin
-    try:
-        core_api.print_info(f"Executing plugin '{plugin.metadata.name}'...")
-        result = plugin_manager.execute_plugin(plugin_name, *(args or []))
-
-        if result is not None:
-            console.print("\n[bold green]Plugin Result:[/bold green]")
-            console.print(result)
-
-        core_api.print_success(f"Plugin '{plugin.metadata.name}' executed successfully")
-    except Exception as e:
-        core_api.print_error(f"Plugin execution failed: {e}")
-        raise typer.Exit(code=1)
-    finally:
-        # Close ZIP file if it was opened
+    if plugin_name:
+        # Single plugin mode
+        plugins_to_run = [plugin_name]
+    elif plugins:
+        # Multiple specific plugins mode
+        plugins_to_run = [p.strip() for p in plugins.split(",")]
+    elif run_all:
+        # Run all compatible plugins
         if zip_file:
-            core_api.close_zip()
+            compatible = plugin_manager.get_compatible_plugins()
+            plugins_to_run = list(compatible.keys())
+            core_api.print_info(f"Running {len(plugins_to_run)} compatible plugins")
+        else:
+            plugins_to_run = list(plugin_manager._plugin_classes.keys())
+            core_api.print_info(f"Running all {len(plugins_to_run)} plugins")
+    elif os_filter:
+        # Run plugins for specific OS
+        os_filter_lower = os_filter.lower()
+        if os_filter_lower not in ["ios", "android"]:
+            core_api.print_error("--os must be 'ios' or 'android'")
+            raise typer.Exit(code=1)
+        compatible = plugin_manager.get_compatible_plugins(os_filter_lower)
+        plugins_to_run = list(compatible.keys())
+        core_api.print_info(f"Running {len(plugins_to_run)} {os_filter_lower.upper()} plugins")
+
+    if not plugins_to_run:
+        core_api.print_error("No plugins to run")
+        raise typer.Exit(code=1)
+
+    # Execute plugins
+    success_count = 0
+    failed_count = 0
+
+    for idx, plugin_name_to_run in enumerate(plugins_to_run, 1):
+        if len(plugins_to_run) > 1:
+            console.print(f"\n[bold cyan]═══ Plugin {idx}/{len(plugins_to_run)}: {plugin_name_to_run} ═══[/bold cyan]")
+
+        try:
+            # Load plugin if not already loaded
+            plugin = plugin_manager.get_plugin(plugin_name_to_run)
+            if not plugin:
+                core_api.print_info(f"Loading plugin '{plugin_name_to_run}'...")
+                plugin = plugin_manager.load_plugin(plugin_name_to_run)
+                if not plugin:
+                    core_api.print_error(f"Failed to load plugin '{plugin_name_to_run}'")
+                    failed_count += 1
+                    continue
+
+            # Execute plugin
+            core_api.print_info(f"Executing plugin '{plugin.metadata.name}'...")
+            result = plugin_manager.execute_plugin(plugin_name_to_run, *(args or []))
+
+            if result is not None and len(plugins_to_run) == 1:
+                console.print("\n[bold green]Plugin Result:[/bold green]")
+                console.print(result)
+
+            core_api.print_success(f"Plugin '{plugin.metadata.name}' executed successfully")
+            success_count += 1
+
+        except Exception as e:
+            core_api.print_error(f"Plugin execution failed: {e}")
+            failed_count += 1
+            if len(plugins_to_run) == 1:
+                raise typer.Exit(code=1)
+            # Continue with next plugin in batch mode
+
+    # Show summary for batch execution
+    if len(plugins_to_run) > 1:
+        console.print(f"\n[bold]Execution Summary:[/bold]")
+        console.print(f"  Total: {len(plugins_to_run)}")
+        console.print(f"  [green]Success: {success_count}[/green]")
+        console.print(f"  [red]Failed: {failed_count}[/red]")
+
+    # Close ZIP file if it was opened
+    if zip_file:
+        core_api.close_zip()
+
+    if failed_count > 0 and len(plugins_to_run) > 1:
+        raise typer.Exit(code=1)
 
 
 @app.command()

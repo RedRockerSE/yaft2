@@ -37,6 +37,7 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
             requires_core_version=">=0.1.0",
             dependencies=[],
             enabled=True,
+            target_os=["ios"],
         )
 
     def initialize(self) -> None:
@@ -113,19 +114,37 @@ class iOSAppGUIDExtractorPlugin(PluginBase):
             return {"success": False, "error": str(e)}
 
     def _detect_zip_structure(self) -> None:
-        """Detect if ZIP has Cellebrite filesystem prefix."""
+        """Detect ZIP structure (Cellebrite, GrayKey, or raw filesystem)."""
         files = self.core_api.list_zip_contents()
 
+        # Check for Cellebrite format first
         for file_info in files[:20]:  # Check first 20 entries
             filename = file_info.filename
             if filename.startswith('filesystem1/'):
                 self.zip_prefix = 'filesystem1/'
-                self.core_api.print_info(f"Detected Cellebrite format: {self.zip_prefix}")
+                self.core_api.print_info(f"Detected format: Cellebrite (filesystem1/)")
                 return
             elif filename.startswith('filesystem/') and not filename.startswith('filesystem1/'):
                 self.zip_prefix = 'filesystem/'
-                self.core_api.print_info(f"Detected Cellebrite format: {self.zip_prefix}")
+                self.core_api.print_info(f"Detected format: Cellebrite (filesystem/)")
                 return
+
+        # Check if it's GrayKey or raw filesystem format (no prefix)
+        # Look for characteristic iOS paths at root level
+        has_ios_paths = False
+        for file_info in files[:50]:  # Check more entries for root paths
+            filename = file_info.filename.lower()
+            if (filename.startswith('private/var/') or
+                filename.startswith('library/') or
+                filename.startswith('applications/') or
+                filename.startswith('system/')):
+                has_ios_paths = True
+                break
+
+        if has_ios_paths:
+            self.core_api.print_info(f"Detected format: GrayKey/Raw filesystem (no prefix)")
+        else:
+            self.core_api.print_warning(f"Could not detect extraction format, attempting raw filesystem access")
 
     def _normalize_path(self, path: str) -> str:
         """Normalize path for ZIP access."""

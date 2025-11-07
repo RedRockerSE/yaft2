@@ -1,5 +1,10 @@
 # YAFT - Yet Another Forensic Tool
 
+[![CI](https://github.com/RedRockerSE/yaft/actions/workflows/ci.yml/badge.svg)](https://github.com/RedRockerSE/yaft/actions/workflows/ci.yml)
+[![Release](https://github.com/RedRockerSE/yaft/actions/workflows/release.yml/badge.svg)](https://github.com/RedRockerSE/yaft/actions/workflows/release.yml)
+[![Python Version](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A plugin-based forensic analysis tool for Python 3.13+ designed for processing and analyzing ZIP archives. Features dynamic plugin loading, beautiful CLI interface, and cross-platform executable builds.
 
 ## Features
@@ -7,7 +12,7 @@ A plugin-based forensic analysis tool for Python 3.13+ designed for processing a
 - **ZIP File Processing**: Built-in support for forensic analysis of ZIP archives
 - **Dynamic Plugin System**: Load and manage forensic plugins at runtime without code changes
 - **Beautiful CLI**: Color-coded output with Rich and Typer for forensic reporting
-- **Case Management**: Swedish forensic case identifier support (U-nummer, K-nummer, BG-nummer) with automatic validation and report organization
+- **Case Management**: Forensic case identifier support (Examiner ID, Case ID, Evidence ID) with automatic validation and report organization
 - **Type-Safe**: Full type hints with Pydantic validation
 - **Cross-Platform**: Build standalone executables for Windows and Linux
 - **Forensic-Focused**: Designed for digital forensics workflows and evidence processing
@@ -39,7 +44,33 @@ YAFT follows a clean, layered architecture:
 
 ## Quick Start
 
-### Installation (Development)
+### Installation
+
+#### Option 1: Download Pre-built Executable (Recommended)
+
+Download the latest release for your platform from the [Releases page](https://github.com/YOUR_USERNAME/yaft/releases):
+
+- **Windows**: `yaft-windows-x64.exe`
+- **macOS**: `yaft-macos-x64`
+- **Linux**: `yaft-linux-x64`
+
+```bash
+# Windows
+yaft-windows-x64.exe --help
+
+# macOS/Linux (make executable first)
+chmod +x yaft-macos-x64
+./yaft-macos-x64 --help
+```
+
+#### Option 2: Install from PyPI
+
+```bash
+pip install yaft
+yaft --help
+```
+
+#### Option 3: Development Installation
 
 ```bash
 # Clone the repository
@@ -100,12 +131,12 @@ python -m yaft.cli --version
 
 ### Case Identifier Management
 
-YAFT includes built-in support for Swedish forensic case management. When running plugins, the tool prompts for case identifiers that are automatically included in reports and used to organize output files.
+YAFT includes built-in support for forensic case management. When running plugins, the tool prompts for case identifiers that are automatically included in reports and used to organize output files.
 
 **Case Identifier Formats:**
-- **U-nummer**: User/investigator identifier (format: `u0000000` - lowercase u followed by 7 digits)
-- **K-nummer**: Case number (format: `K0000000-00` - uppercase K followed by 7 digits, dash, 2 digits)
-- **BG-nummer**: Evidence number (format: `BG000000-0` - uppercase BG followed by 6 digits, dash, 1 digit)
+- **Examiner ID**: User/investigator identifier (format: alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
+- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`, `K2024001-01`)
+- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `BG123456-1`, `EV123456-01`)
 
 **Example Usage:**
 ```bash
@@ -113,17 +144,17 @@ YAFT includes built-in support for Swedish forensic case management. When runnin
 python -m yaft.cli run iOSAppGUIDExtractorPlugin --zip evidence.zip
 
 # You will be prompted:
-# ? U-nummer (format: u0000000): u1234567
-# ? K-nummer (format: K0000000-00): K2024001-01
-# ? BG-nummer (format: BG000000-0): BG123456-1
+# ? Examiner ID (alphanumeric, 2-50 chars): john_doe
+# ? Case ID (format: CASE2024-01): CASE2024-01
+# ? Evidence ID (format: BG123456-1): BG123456-1
 ```
 
 **Output Organization:**
 Reports and extracted data are automatically organized by case:
 ```
 yaft_output/
-├── K2024001-01/              # Case number
-│   └── BG123456-1/           # Evidence number
+├── CASE2024-01/              # Case ID
+│   └── BG123456-1/           # Evidence ID
 │       ├── reports/          # Generated reports
 │       └── ios_extractions/  # Plugin-specific outputs
 ```
@@ -133,9 +164,9 @@ Case identifiers are automatically included in report metadata sections:
 ```markdown
 ## Metadata
 - **Generated**: 2024-01-15 14:30:00
-- **U-nummer**: u1234567
-- **K-nummer**: K2024001-01
-- **BG-nummer**: BG123456-1
+- **Examiner ID**: john_doe
+- **Case ID**: CASE2024-01
+- **Evidence ID**: BG123456-1
 ```
 
 **Input Validation:**
@@ -215,21 +246,21 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     self.core_api.print_warning("Warning message")
     self.core_api.print_info("Info message")
 
-    # Case identifier management (Swedish forensics)
+    # Case identifier management
     # Validation methods (returns True/False)
-    is_valid = self.core_api.validate_u_nummer("u1234567")
-    is_valid = self.core_api.validate_k_nummer("K2024001-01")
-    is_valid = self.core_api.validate_bg_nummer("BG123456-1")
+    is_valid = self.core_api.validate_examiner_id("john_doe")
+    is_valid = self.core_api.validate_case_id("CASE2024-01")
+    is_valid = self.core_api.validate_evidence_id("BG123456-1")
 
     # Setting case identifiers programmatically
-    self.core_api.set_case_identifiers("u1234567", "K2024001-01", "BG123456-1")
+    self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "BG123456-1")
 
     # Getting case identifiers
-    u, k, bg = self.core_api.get_case_identifiers()
+    examiner, case, evidence = self.core_api.get_case_identifiers()
 
     # Get case-based output directory (automatically uses case identifiers if set)
     output_dir = self.core_api.get_case_output_dir("ios_extractions")
-    # Returns: yaft_output/K2024001-01/BG123456-1/ios_extractions
+    # Returns: yaft_output/CASE2024-01/BG123456-1/ios_extractions
 
     # ZIP file handling (forensic analysis)
     zip_path = self.core_api.get_current_zip()
@@ -269,7 +300,7 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
         sections=sections,
         metadata={"Status": "Complete"}
     )
-    # Reports are saved to: yaft_output/K2024001-01/BG123456-1/reports/
+    # Reports are saved to: yaft_output/CASE2024-01/BG123456-1/reports/
 
     # User input
     name = self.core_api.get_user_input("Enter your name")

@@ -40,6 +40,10 @@ class PluginMetadata(BaseModel):
         default_factory=list, description="List of required plugin dependencies"
     )
     enabled: bool = Field(default=True, description="Whether plugin is enabled")
+    target_os: list[str] = Field(
+        default_factory=lambda: ["any"],
+        description="Target operating systems: 'ios', 'android', 'any', or combination"
+    )
 
     class Config:
         """Pydantic configuration."""
