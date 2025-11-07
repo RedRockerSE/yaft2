@@ -1,6 +1,6 @@
 # YAFT - Yet Another Forensic Tool
 
-[![CI](https://github.com/RedRockerSE/yaft2/actions/workflows/ci.yml/badge.svg)](https://github.com/RedRockerSE/yaft/actions2/workflows/ci.yml)
+[![CI](https://github.com/RedRockerSE/yaft2/actions/workflows/ci.yml/badge.svg)](https://github.com/RedRockerSE/yaft2/actions/workflows/ci.yml)
 [![Release](https://github.com/RedRockerSE/yaft2/actions/workflows/release.yml/badge.svg)](https://github.com/RedRockerSE/yaft2/actions/workflows/release.yml)
 [![Python Version](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
