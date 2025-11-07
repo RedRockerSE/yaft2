@@ -20,3 +20,5 @@ The App is called YaFT which stands for: Yet Another Forensic Tool
 
 ### Added requirements 2025-11-07
 - Change all occurancies of u-nummer, k-nummer and bg-nummer to more generic: Examiner, CaseId and EvidenceId
+- Zip-files (device-extractions) should support both Cellebrite and GrayKey-format
+- The app should be able to detect what OS an extraction-zip contains (iOS or Android) and should report valid and extensive OS-specific information
