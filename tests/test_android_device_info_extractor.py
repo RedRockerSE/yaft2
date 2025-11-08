@@ -335,7 +335,7 @@ def test_export_to_json(plugin, core_api, mock_android_zip_cellebrite, tmp_path)
 
     assert data["plugin_name"] == "AndroidDeviceInfoExtractor"
     assert data["plugin_version"] == "1.0.0"
-    assert "device_info" in data
+    assert "data" in data  # CoreAPI uses "data" key for plugin data
 
 
 def test_generate_report(plugin, core_api, mock_android_zip_cellebrite):

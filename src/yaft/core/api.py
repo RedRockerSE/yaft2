@@ -756,6 +756,135 @@ class CoreAPI:
             size_float /= 1024.0
         return f"{size_float:.2f} PB"
 
+    # ========== Forensic ZIP Format Detection ==========
+
+    def detect_zip_format(self) -> tuple[str, str]:
+        """
+        Detect the format of a loaded forensic ZIP file (Cellebrite, GrayKey, etc.).
+
+        Returns:
+            tuple[str, str]: A tuple of (format_type, path_prefix) where:
+                - format_type: "cellebrite", "graykey", or "unknown"
+                - path_prefix: The prefix to use for paths ("filesystem1/", "fs/", or "")
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+
+        Examples:
+            >>> format_type, prefix = api.detect_zip_format()
+            >>> if format_type == "cellebrite":
+            ...     full_path = prefix + "System/Library/CoreServices/SystemVersion.plist"
+        """
+        if not self._zip_handle:
+            raise RuntimeError("No ZIP file loaded. Use set_zip_file() first.")
+
+        files = self.list_zip_contents()
+
+        # Check for Cellebrite iOS format (filesystem1/ or filesystem/)
+        for file_info in files[:20]:
+            filename = file_info.filename
+            if filename.startswith('filesystem1/'):
+                self.log_info("Detected format: Cellebrite iOS (filesystem1/)")
+                return ("cellebrite", "filesystem1/")
+            elif filename.startswith('filesystem/') and not filename.startswith('filesystem1/'):
+                self.log_info("Detected format: Cellebrite iOS (filesystem/)")
+                return ("cellebrite", "filesystem/")
+            elif filename.startswith('fs/'):
+                self.log_info("Detected format: Cellebrite Android (fs/)")
+                return ("cellebrite", "fs/")
+
+        # Check if it's GrayKey or raw filesystem format (no prefix)
+        # Look for iOS paths
+        for file_info in files[:50]:
+            filename = file_info.filename.lower()
+            if (
+                filename.startswith('private/var/')
+                or filename.startswith('system/library/')
+                or filename.startswith('library/')
+            ):
+                self.log_info("Detected format: GrayKey/Raw iOS filesystem (no prefix)")
+                return ("graykey", "")
+
+        # Look for Android paths
+        for file_info in files[:50]:
+            filename = file_info.filename.lower()
+            if (
+                filename.startswith('data/data/')
+                or filename.startswith('system/build.prop')
+                or filename.startswith('system/app/')
+            ):
+                self.log_info("Detected format: GrayKey/Raw Android filesystem (no prefix)")
+                return ("graykey", "")
+
+        self.log_warning("Could not detect extraction format, using raw access")
+        return ("unknown", "")
+
+    def normalize_zip_path(self, path: str, prefix: str = "") -> str:
+        """
+        Normalize a filesystem path for ZIP access by adding the appropriate prefix.
+
+        Args:
+            path: The filesystem path (e.g., "System/Library/CoreServices/SystemVersion.plist")
+            prefix: The prefix to add (e.g., "filesystem1/", "fs/", "")
+
+        Returns:
+            str: The normalized path for ZIP access
+
+        Examples:
+            >>> _, prefix = api.detect_zip_format()
+            >>> full_path = api.normalize_zip_path("System/Library/file.plist", prefix)
+        """
+        if prefix:
+            return prefix + path
+        return path
+
+    def export_plugin_data_to_json(
+        self,
+        output_path: Path,
+        plugin_name: str,
+        plugin_version: str,
+        data: dict[str, Any],
+        extraction_type: str = "unknown",
+        errors: list[dict[str, str]] | None = None,
+    ) -> None:
+        """
+        Export plugin data to JSON file with standardized format.
+
+        Args:
+            output_path: Path where JSON file should be written
+            plugin_name: Name of the plugin
+            plugin_version: Version of the plugin
+            data: The data to export
+            extraction_type: Type of extraction ("cellebrite", "graykey", "unknown")
+            errors: Optional list of errors encountered during extraction
+
+        Examples:
+            >>> api.export_plugin_data_to_json(
+            ...     Path("output.json"),
+            ...     "MyPlugin",
+            ...     "1.0.0",
+            ...     {"key": "value"},
+            ...     "cellebrite",
+            ...     [{"source": "file.db", "error": "not found"}]
+            ... )
+        """
+        import json
+        from datetime import datetime, UTC
+
+        output_data = {
+            "plugin_name": plugin_name,
+            "plugin_version": plugin_version,
+            "extraction_source": extraction_type,
+            "processing_timestamp": datetime.now(UTC).isoformat(),
+            "data": data,
+            "errors": errors or [],
+        }
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, indent=2, ensure_ascii=False, default=str)
+
+        self.log_info(f"Exported data to: {output_path}")
+
     # ========== Plist Parsing Methods ==========
 
     def parse_plist(self, content: bytes) -> Any:

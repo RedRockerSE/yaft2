@@ -12,7 +12,6 @@ Based on forensic research documented in docs/PluginResearch.md
 
 import re
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -33,6 +32,7 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
         self.metadata_extracted: Dict[str, Any] = {}
         self.errors: List[Dict[str, str]] = []
         self.zip_prefix = ''
+        self.extraction_type = 'unknown'
 
     @property
     def metadata(self) -> PluginMetadata:
@@ -122,39 +122,12 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
             return {"success": False, "error": str(e)}
 
     def _detect_zip_structure(self) -> None:
-        """Detect ZIP structure (Cellebrite, GrayKey, or raw filesystem)."""
-        files = self.core_api.list_zip_contents()
-
-        # Check for Cellebrite format first
-        for file_info in files[:20]:
-            filename = file_info.filename
-            if filename.startswith('fs/'):
-                self.zip_prefix = 'fs/'
-                self.core_api.print_info("Detected format: Cellebrite (fs/)")
-                return
-
-        # Check if it's GrayKey or raw filesystem format (no prefix)
-        has_android_paths = False
-        for file_info in files[:50]:
-            filename = file_info.filename.lower()
-            if (
-                filename.startswith('data/data/')
-                or filename.startswith('system/build.prop')
-                or filename.startswith('system/app/')
-            ):
-                has_android_paths = True
-                break
-
-        if has_android_paths:
-            self.core_api.print_info("Detected format: GrayKey/Raw filesystem (no prefix)")
-        else:
-            self.core_api.print_warning("Could not detect extraction format, attempting raw access")
+        """Detect ZIP structure using CoreAPI method."""
+        self.extraction_type, self.zip_prefix = self.core_api.detect_zip_format()
 
     def _normalize_path(self, path: str) -> str:
-        """Normalize path for ZIP access."""
-        if self.zip_prefix:
-            return self.zip_prefix + path
-        return path
+        """Normalize path for ZIP access using CoreAPI method."""
+        return self.core_api.normalize_zip_path(path, self.zip_prefix)
 
     def _extract_build_properties(self) -> None:
         """Extract device information from build.prop."""
@@ -607,29 +580,17 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
         )
 
     def _export_to_json(self, output_path: Path) -> None:
-        """Export device info to JSON file."""
-        import json
-
+        """Export device info to JSON file using CoreAPI method."""
         device_info = self._format_device_info()
 
-        output_data = {
-            "plugin_name": self.metadata.name,
-            "plugin_version": self.metadata.version,
-            "extraction_source": self._detect_extraction_type(),
-            "platform": "Android",
-            "processing_timestamp": datetime.utcnow().isoformat() + 'Z',
-            "device_info": device_info,
-            "errors": self.errors,
-        }
-
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(output_data, f, indent=2, ensure_ascii=False, default=str)
-
-    def _detect_extraction_type(self) -> str:
-        """Detect if extraction is Cellebrite or GrayKey."""
-        if self.zip_prefix == 'fs/':
-            return 'Cellebrite'
-        return 'GrayKey'
+        self.core_api.export_plugin_data_to_json(
+            output_path=output_path,
+            plugin_name=self.metadata.name,
+            plugin_version=self.metadata.version,
+            data=device_info,
+            extraction_type=self.extraction_type,
+            errors=self.errors,
+        )
 
     def cleanup(self) -> None:
         """Clean up temporary resources."""
