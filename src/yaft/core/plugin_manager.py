@@ -110,7 +110,7 @@ class PluginManager:
         spec.loader.exec_module(module)
 
         # Find PluginBase subclasses in the module
-        for name, obj in inspect.getmembers(module, inspect.isclass):
+        for _name, obj in inspect.getmembers(module, inspect.isclass):
             if issubclass(obj, PluginBase) and obj is not PluginBase:
                 return obj
 

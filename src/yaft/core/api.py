@@ -266,7 +266,7 @@ class CoreAPI:
         self._case_id = case_id
         self._evidence_id = evidence_id
 
-        self.console.print(f"\n[bold green]✓[/bold green] Case identifiers set:")
+        self.console.print("\n[bold green]✓[/bold green] Case identifiers set:")
         self.console.print(f"  Examiner ID:  {examiner_id}")
         self.console.print(f"  Case ID:      {case_id}")
         self.console.print(f"  Evidence ID:  {evidence_id}\n")
@@ -514,7 +514,8 @@ class CoreAPI:
         for path in possible_paths:
             try:
                 plist_data = self.read_plist_from_zip(path)
-                return plist_data.get("ProductVersion")
+                version = plist_data.get("ProductVersion")
+                return str(version) if version else None
             except (KeyError, Exception):
                 continue
 
@@ -748,11 +749,12 @@ class CoreAPI:
         Returns:
             str: Formatted size string
         """
+        size_float = float(size)
         for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if size < 1024.0:
-                return f"{size:.2f} {unit}"
-            size /= 1024.0
-        return f"{size:.2f} PB"
+            if size_float < 1024.0:
+                return f"{size_float:.2f} {unit}"
+            size_float /= 1024.0
+        return f"{size_float:.2f} PB"
 
     # ========== Plist Parsing Methods ==========
 

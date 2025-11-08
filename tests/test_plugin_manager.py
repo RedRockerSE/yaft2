@@ -1,12 +1,9 @@
 """Tests for PluginManager."""
 
-from typing import Any
 
-import pytest
 
-from yaft.core.plugin_base import PluginBase, PluginMetadata, PluginStatus
+from yaft.core.plugin_base import PluginStatus
 from yaft.core.plugin_manager import PluginManager
-
 
 # Test plugin for discovery
 TEST_PLUGIN_CODE = '''"""Test plugin for unit tests."""
