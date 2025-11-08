@@ -924,6 +924,52 @@ class CoreAPI:
         content = self.read_zip_file(path)
         return self.parse_plist(content)
 
+    # ========== XML Parsing Methods ==========
+
+    def parse_xml(self, content: bytes | str) -> Any:
+        """
+        Parse XML content from bytes or string.
+
+        Args:
+            content: XML file content as bytes or string
+
+        Returns:
+            xml.etree.ElementTree.Element: Root element of parsed XML tree
+
+        Raises:
+            Exception: If XML parsing fails
+        """
+        import xml.etree.ElementTree as ET
+
+        try:
+            if isinstance(content, bytes):
+                content_str = content.decode('utf-8')
+            else:
+                content_str = content
+
+            return ET.fromstring(content_str)
+        except Exception as e:
+            self.log_error(f"Failed to parse XML: {e}")
+            raise
+
+    def read_xml_from_zip(self, path: str) -> Any:
+        """
+        Read and parse an XML file from the current ZIP archive.
+
+        Args:
+            path: Path to XML file within the ZIP archive
+
+        Returns:
+            xml.etree.ElementTree.Element: Root element of parsed XML tree
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If file is not found in ZIP
+            Exception: If XML parsing fails
+        """
+        content = self.read_zip_file(path)
+        return self.parse_xml(content)
+
     # ========== SQLite Database Methods ==========
 
     def query_sqlite_from_zip(

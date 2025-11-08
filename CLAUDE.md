@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **YAFT (Yet Another Forensic Tool)** is a Python-based forensic analysis tool designed for processing and analyzing ZIP archives through a plugin architecture. The tool provides built-in ZIP file handling capabilities that are exposed to plugins through the Core API, enabling forensic analysts to create custom analysis plugins without worrying about low-level ZIP operations.
 
-YaFT includes production-ready iOS forensic analysis plugins for extracting application metadata, permissions, and usage statistics from iOS filesystem extractions (supports Cellebrite format).
+YaFT includes production-ready mobile forensic analysis plugins for both iOS and Android platforms, extracting device information, application metadata, permissions, and usage statistics from full filesystem extractions (supports Cellebrite and GrayKey formats).
 
 ## Technology Stack
 
@@ -38,7 +38,8 @@ CLI (Presentation) → Plugin Manager (Application) → Core API (Service) → P
    - **ZIP file handling**: load, read, extract, analyze ZIP archives
    - **Case identifier management**: Forensic case identifiers (Examiner ID, Case ID, Evidence ID)
    - **Plist parsing**: parse plist files from ZIP archives (iOS forensics)
-   - **SQLite querying**: execute SQL queries on databases from ZIP archives (iOS forensics)
+   - **XML parsing**: parse XML files from ZIP archives (Android forensics)
+   - **SQLite querying**: execute SQL queries on databases from ZIP archives (iOS & Android forensics)
    - Logging, file I/O, user input, configuration management
    - Inter-plugin communication via shared data store
 
@@ -129,11 +130,11 @@ self.core_api.extract_all_zip(output_dir)  # Extract all files
 self.core_api.display_zip_contents()  # Display formatted table
 ```
 
-## Plist and SQLite Support (iOS Forensics)
+## Data Format Support (Plist, XML, SQLite)
 
-The Core API provides built-in support for parsing plist files and querying SQLite databases from ZIP archives. This eliminates the need for plugins to manage temporary files manually.
+The Core API provides built-in support for parsing plist files, XML files, and querying SQLite databases from ZIP archives. This eliminates the need for plugins to manage temporary files manually or import parsing libraries.
 
-### Plist Parsing
+### Plist Parsing (iOS)
 
 ```python
 # Parse plist from ZIP (returns dict or list)
@@ -144,7 +145,24 @@ raw_content = self.core_api.read_zip_file("file.plist")
 data = self.core_api.parse_plist(raw_content)
 ```
 
-### SQLite Querying
+### XML Parsing (Android)
+
+```python
+# Parse XML from ZIP (returns xml.etree.ElementTree.Element)
+root = self.core_api.read_xml_from_zip("path/to/file.xml")
+
+# Parse packages.xml example
+root = self.core_api.read_xml_from_zip("data/system/packages.xml")
+for package in root.findall('.//package'):
+    package_name = package.get('name')
+    version = package.get('version')
+
+# Or parse XML from bytes/string
+raw_content = self.core_api.read_zip_file("file.xml")
+root = self.core_api.parse_xml(raw_content)
+```
+
+### SQLite Querying (iOS & Android)
 
 ```python
 # Query database from ZIP (returns list of tuples)
@@ -172,9 +190,10 @@ dicts = self.core_api.query_sqlite_from_zip_dict(
 
 **Benefits:**
 - Automatic temporary file management (created and cleaned up automatically)
-- Support for fallback queries (useful for iOS version differences)
-- No need for `tempfile`, `sqlite3`, or `plistlib` imports in plugins
+- Support for fallback queries (useful for iOS/Android version differences)
+- No need for `tempfile`, `sqlite3`, `plistlib`, or `xml.etree.ElementTree` imports in plugins
 - Consistent error handling across all plugins
+- Plugins remain focused on forensic logic, not data format handling
 
 ## Unified Report Generation
 
@@ -323,29 +342,42 @@ class MyForensicPlugin(PluginBase):
         pass
 ```
 
-## iOS Forensic Analysis Plugins
+## Mobile Forensic Analysis Plugins
 
-YaFT includes two specialized plugins for iOS forensic analysis:
+YaFT includes production-ready forensic analysis plugins for iOS and Android platforms:
 
-### 1. iOSAppGUIDExtractorPlugin
+### iOS Forensic Plugins
+
+#### 1. iOSDeviceInfoExtractorPlugin
+
+Extracts comprehensive device metadata from iOS filesystem extractions:
+- System version information (iOS version, build)
+- Device identifiers (UDID, serial number)
+- Cellular information (IMEI, MEID, ICCID)
+- Carrier information (phone number, operator name)
+- iCloud account information
+- Backup information and locale settings
+- Supports Cellebrite and GrayKey extraction formats
+
+**Usage:**
+```bash
+python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip ios_extraction.zip
+```
+
+#### 2. iOSAppGUIDExtractorPlugin
 
 Extracts application metadata from iOS filesystem extractions:
 - Bundle identifiers and container GUIDs
 - App metadata (display name, version, etc.)
 - Data from MobileInstallation.plist, applicationState.db, and filesystem enumeration
-- Supports Cellebrite extraction format (filesystem1/ prefix)
+- Supports Cellebrite and GrayKey extraction formats
 
 **Usage:**
 ```bash
 python -m yaft.cli run iOSAppGUIDExtractorPlugin --zip ios_extraction.zip
 ```
 
-**Output:**
-- Markdown report with comprehensive app listing
-- JSON export with all app metadata
-- Extracted to `yaft_output/ios_extractions/`
-
-### 2. iOSAppPermissionsExtractorPlugin
+#### 3. iOSAppPermissionsExtractorPlugin
 
 Extracts application permissions, usage statistics, and privacy data:
 - Permission grants from TCC.db (Camera, Location, Contacts, etc.)
@@ -359,17 +391,85 @@ Extracts application permissions, usage statistics, and privacy data:
 python -m yaft.cli run iOSAppPermissionsExtractorPlugin --zip ios_extraction.zip
 ```
 
+### Android Forensic Plugins
+
+#### 1. AndroidDeviceInfoExtractorPlugin
+
+Extracts comprehensive device metadata from Android filesystem extractions:
+- Build properties (manufacturer, model, Android version)
+- Device identifiers (Android ID, serial number)
+- Network information (WiFi/Bluetooth MAC addresses)
+- SIM card and carrier information
+- Account information (Google accounts, etc.)
+- Security settings (ADB enabled, developer mode)
+- Bluetooth paired devices
+- Supports Cellebrite and GrayKey extraction formats
+
+**Usage:**
+```bash
+python -m yaft.cli run AndroidDeviceInfoExtractorPlugin --zip android_extraction.zip
+```
+
 **Output:**
-- Markdown report with risk analysis
+- Markdown report with device summary
+- JSON export with complete device metadata
+- Security warnings for ADB/developer mode
+- Extracted to `yaft_output/android_device_info/`
+
+#### 2. AndroidAppInfoExtractorPlugin
+
+Extracts application information from Android filesystem extractions:
+- Package names, versions, and installation dates
+- App metadata from packages.xml and packages.list
+- Usage statistics (launch counts, usage time)
+- App categorization (system, user-installed, messaging, etc.)
+- Suspicious app detection (debuggable, no installer, temp location)
+- Supports Cellebrite and GrayKey extraction formats
+
+**Usage:**
+```bash
+python -m yaft.cli run AndroidAppInfoExtractorPlugin --zip android_extraction.zip
+```
+
+**Output:**
+- Markdown report with app listing and categories
+- JSON export with complete app metadata
+- Flagged suspicious applications
+- Extracted to `yaft_output/android_extractions/`
+
+#### 3. AndroidAppPermissionsExtractorPlugin
+
+Extracts application permissions and privacy data from Android filesystem extractions:
+- Declared permissions from packages.xml
+- Runtime permissions from runtime-permissions.xml
+- App ops (permission usage tracking)
+- Usage statistics (app launches, foreground time)
+- Risk scoring based on permission types
+- High-risk permission identification (location, camera, microphone, etc.)
+- Supports Cellebrite and GrayKey extraction formats
+
+**Usage:**
+```bash
+python -m yaft.cli run AndroidAppPermissionsExtractorPlugin --zip android_extraction.zip
+```
+
+**Output:**
+- Markdown report with permission analysis and risk assessment
 - JSON export with detailed permission data
 - Identified high-risk applications
-- Extracted to `yaft_output/ios_extractions/`
+- Apps with background location access highlighted
+- Extracted to `yaft_output/android_extractions/`
 
-**Both plugins:**
-- Auto-detect Cellebrite filesystem prefix
-- Handle SQLite databases via temporary extraction
-- Generate professional markdown reports
-- Export JSON for further processing
+### Common Plugin Features
+
+**All mobile forensic plugins:**
+- Auto-detect Cellebrite (fs/ or filesystem1/ prefix) and GrayKey formats (no prefix)
+- Handle SQLite databases via temporary extraction (auto-cleaned)
+- Parse XML configuration files
+- Generate professional markdown reports with forensic notes
+- Export JSON for further processing and integration
+- Comprehensive error handling with detailed error logs
+- Support case-based output organization
 
 ## Important Implementation Details
 
@@ -382,8 +482,11 @@ python -m yaft.cli run iOSAppPermissionsExtractorPlugin --zip ios_extraction.zip
 - **Output Directory**: Use `core_api.get_case_output_dir(subdir)` for case-organized output paths (falls back to `yaft_output/` if no case IDs)
 - **Report Generation**: All plugins MUST use `core_api.generate_report()` for consistent markdown reporting
 - **Report Location**: Reports are saved to `yaft_output/<case_id>/<evidence_id>/reports/` with case identifiers in metadata
-- **iOS Analysis**: iOS plugins use temporary directories for SQLite database extraction (auto-cleaned)
+- **iOS/Android Analysis**: Mobile plugins use temporary directories for SQLite database extraction (auto-cleaned)
 - **Windows Compatibility**: CoreAPI uses ASCII-safe output markers ([OK], [ERROR], [WARNING], [INFO]) instead of Unicode symbols for Windows console compatibility
+- **XML Parsing**: Android plugins use CoreAPI's `read_xml_from_zip()` and `parse_xml()` methods - no direct ElementTree imports needed
+- **Data Format Abstraction**: Plugins never import `plistlib`, `xml.etree.ElementTree`, or `sqlite3` directly - all handled via CoreAPI
+- **Permission Risk Scoring**: Both iOS and Android permissions plugins implement risk scoring based on permission sensitivity
 
 ## Building Executables
 
