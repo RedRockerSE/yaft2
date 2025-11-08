@@ -5,7 +5,7 @@ Provides command-line interface with color-coded output using Typer and Rich.
 """
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -18,7 +18,10 @@ from yaft.core.plugin_manager import PluginManager
 # Create Typer app
 app = typer.Typer(
     name="yaft",
-    help="YAFT - Yet Another Forensic Tool: A plugin-based forensic analysis tool for processing ZIP archives",
+    help=(
+        "YAFT - Yet Another Forensic Tool: "
+        "A plugin-based forensic analysis tool for processing ZIP archives"
+    ),
     add_completion=False,
 )
 
@@ -63,8 +66,13 @@ def version() -> None:
 
 @app.command()
 def list_plugins(
-    all: Annotated[bool, typer.Option("--all", "-a", help="Show all discovered plugins")] = False,
-    filter_os: Annotated[bool, typer.Option("--filter-os", "-f", help="Filter plugins by detected OS (requires ZIP)")] = False,
+    all: Annotated[
+        bool, typer.Option("--all", "-a", help="Show all discovered plugins")
+    ] = False,
+    filter_os: Annotated[
+        bool,
+        typer.Option("--filter-os", "-f", help="Filter plugins by detected OS (requires ZIP)"),
+    ] = False,
 ) -> None:
     """List available plugins."""
     plugin_manager = get_plugin_manager()
@@ -122,12 +130,29 @@ def unload(
 
 @app.command()
 def run(
-    plugin_name: Annotated[Optional[str], typer.Argument(help="Name of the plugin to run (optional if using --plugins, --all, or --os)")] = None,
-    zip_file: Annotated[Optional[Path], typer.Option("--zip", "-z", help="ZIP file to analyze")] = None,
-    plugins: Annotated[Optional[str], typer.Option("--plugins", "-p", help="Comma-separated list of plugin names to run")] = None,
-    run_all: Annotated[bool, typer.Option("--all", help="Run all compatible plugins (filters by OS if ZIP provided)")] = False,
-    os_filter: Annotated[Optional[str], typer.Option("--os", help="Run plugins for specific OS (ios/android)")] = None,
-    args: Annotated[Optional[list[str]], typer.Argument(help="Arguments to pass to the plugin(s)")] = None,
+    plugin_name: Annotated[
+        str | None,
+        typer.Argument(
+            help="Name of the plugin to run (optional if using --plugins, --all, or --os)"
+        ),
+    ] = None,
+    zip_file: Annotated[
+        Path | None, typer.Option("--zip", "-z", help="ZIP file to analyze")
+    ] = None,
+    plugins: Annotated[
+        str | None,
+        typer.Option("--plugins", "-p", help="Comma-separated list of plugin names to run"),
+    ] = None,
+    run_all: Annotated[
+        bool,
+        typer.Option("--all", help="Run all compatible plugins (filters by OS if ZIP provided)"),
+    ] = False,
+    os_filter: Annotated[
+        str | None, typer.Option("--os", help="Run plugins for specific OS (ios/android)")
+    ] = None,
+    args: Annotated[
+        list[str] | None, typer.Argument(help="Arguments to pass to the plugin(s)")
+    ] = None,
 ) -> None:
     """Load and execute one or more plugins, optionally with a ZIP file for forensic analysis.
 
@@ -136,7 +161,8 @@ def run(
         yaft run HelloWorldPlugin
 
         # Run multiple specific plugins
-        yaft run --zip evidence.zip --plugins iOSAppGUIDExtractorPlugin,iOSAppPermissionsExtractorPlugin
+        yaft run --zip evidence.zip --plugins \\
+            iOSAppGUIDExtractorPlugin,iOSAppPermissionsExtractorPlugin
 
         # Run all compatible plugins (auto-detects OS from ZIP)
         yaft run --zip evidence.zip --all
@@ -161,10 +187,10 @@ def run(
         core_api.prompt_for_case_identifiers()
     except KeyboardInterrupt:
         core_api.print_error("\nCase identifier input cancelled")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
     except Exception as e:
         core_api.print_error(f"Failed to get case identifiers: {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     # Load ZIP file if provided
     if zip_file:
@@ -182,7 +208,7 @@ def run(
                 core_api.print_info(f"Detected OS: {os_type.upper()}")
         except Exception as e:
             core_api.print_error(f"Failed to load ZIP file: {e}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
 
     # Discover plugins if not already done
     if not plugin_manager._plugin_classes:
@@ -227,7 +253,10 @@ def run(
 
     for idx, plugin_name_to_run in enumerate(plugins_to_run, 1):
         if len(plugins_to_run) > 1:
-            console.print(f"\n[bold cyan]═══ Plugin {idx}/{len(plugins_to_run)}: {plugin_name_to_run} ═══[/bold cyan]")
+            console.print(
+                f"\n[bold cyan]═══ Plugin {idx}/{len(plugins_to_run)}: "
+                f"{plugin_name_to_run} ═══[/bold cyan]"
+            )
 
         try:
             # Load plugin if not already loaded
@@ -255,12 +284,12 @@ def run(
             core_api.print_error(f"Plugin execution failed: {e}")
             failed_count += 1
             if len(plugins_to_run) == 1:
-                raise typer.Exit(code=1)
+                raise typer.Exit(code=1) from e
             # Continue with next plugin in batch mode
 
     # Show summary for batch execution
     if len(plugins_to_run) > 1:
-        console.print(f"\n[bold]Execution Summary:[/bold]")
+        console.print("\n[bold]Execution Summary:[/bold]")
         console.print(f"  Total: {len(plugins_to_run)}")
         console.print(f"  [green]Success: {success_count}[/green]")
         console.print(f"  [red]Failed: {failed_count}[/red]")
@@ -294,7 +323,7 @@ def info(
             plugin = plugin_class(core_api)
         except Exception as e:
             core_api.print_error(f"Failed to get plugin info: {e}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from e
 
     if not plugin:
         core_api.print_error(f"Plugin '{plugin_name}' not found")
@@ -310,7 +339,8 @@ def info(
         f"[bold]Status:[/bold] {plugin.status.value}\n"
         f"[bold]Enabled:[/bold] {metadata.enabled}\n"
         f"[bold]Required Core Version:[/bold] {metadata.requires_core_version}\n"
-        f"[bold]Dependencies:[/bold] {', '.join(metadata.dependencies) if metadata.dependencies else 'None'}"
+        f"[bold]Dependencies:[/bold] "
+        f"{', '.join(metadata.dependencies) if metadata.dependencies else 'None'}"
     )
 
     console.print(Panel(info_text, title=f"Plugin: {metadata.name}", border_style="cyan"))
@@ -339,7 +369,7 @@ def reload() -> None:
 def main(
     ctx: typer.Context,
     version_flag: Annotated[
-        Optional[bool],
+        bool | None,
         typer.Option("--version", "-v", help="Show version and exit"),
     ] = None,
 ) -> None:

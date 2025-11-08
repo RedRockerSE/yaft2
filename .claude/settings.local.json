@@ -5,7 +5,8 @@
       "Bash(test.txt)",
       "Bash(zip:*)",
       "Bash(python:*)",
-      "Bash(uv run pytest:*)"
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff check:*)"
     ],
     "deny": [],
     "ask": []

@@ -57,7 +57,7 @@ def test_plugin_metadata_immutable():
         description="Test description",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises((AttributeError, ValueError)):
         metadata.name = "NewName"
 
 

@@ -3,7 +3,6 @@
 import plistlib
 import sqlite3
 import zipfile
-from pathlib import Path
 
 import pytest
 
@@ -243,9 +242,11 @@ def test_parse_plist(core_api):
 
 def test_parse_plist_invalid(core_api):
     """Test parsing invalid plist data raises error."""
+    import plistlib
+
     invalid_data = b"not a valid plist"
 
-    with pytest.raises(Exception):
+    with pytest.raises((plistlib.InvalidFileException, ValueError)):
         core_api.parse_plist(invalid_data)
 
 
@@ -373,9 +374,17 @@ def test_query_sqlite_from_zip_dict(core_api, temp_dir):
 
     conn = sqlite3.connect(str(db_path))
     cursor = conn.cursor()
-    cursor.execute("CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, author TEXT, year INTEGER)")
-    cursor.execute("INSERT INTO books (title, author, year) VALUES (?, ?, ?)", ("Book 1", "Author A", 2020))
-    cursor.execute("INSERT INTO books (title, author, year) VALUES (?, ?, ?)", ("Book 2", "Author B", 2021))
+    cursor.execute(
+        "CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, author TEXT, year INTEGER)"
+    )
+    cursor.execute(
+        "INSERT INTO books (title, author, year) VALUES (?, ?, ?)",
+        ("Book 1", "Author A", 2020),
+    )
+    cursor.execute(
+        "INSERT INTO books (title, author, year) VALUES (?, ?, ?)",
+        ("Book 2", "Author B", 2021),
+    )
     conn.commit()
     conn.close()
 
@@ -383,7 +392,9 @@ def test_query_sqlite_from_zip_dict(core_api, temp_dir):
         zf.write(db_path, "books.db")
 
     core_api.set_zip_file(zip_path)
-    results = core_api.query_sqlite_from_zip_dict("books.db", "SELECT title, author, year FROM books ORDER BY year")
+    results = core_api.query_sqlite_from_zip_dict(
+        "books.db", "SELECT title, author, year FROM books ORDER BY year"
+    )
 
     assert len(results) == 2
     assert results[0]["title"] == "Book 1"
