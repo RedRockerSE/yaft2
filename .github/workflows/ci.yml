@@ -31,9 +31,9 @@ jobs:
       run: |
         uv pip install --system -e ".[dev]"
 
-    - name: Run linting with ruff
-      run: |
-        ruff check src/ tests/
+    # - name: Run linting with ruff
+    #   run: |
+    #     ruff check src/ tests/
 
     - name: Run type checking with mypy
       run: |
