@@ -41,7 +41,7 @@ jobs:
     - name: Build executable with PyInstaller (Windows)
       if: runner.os == 'Windows'
       run: |
-        pyinstaller --name yaft-windows-x64 `
+        python -m PyInstaller --name yaft-windows-x64 `
           --onefile `
           --console `
           --add-data "plugins;plugins" `
@@ -57,7 +57,7 @@ jobs:
     - name: Build executable with PyInstaller (Unix)
       if: runner.os != 'Windows'
       run: |
-        pyinstaller --name ${{ matrix.artifact_name }} \
+        python -m PyInstaller --name ${{ matrix.artifact_name }} \
           --onefile \
           --console \
           --add-data "plugins:plugins" \
