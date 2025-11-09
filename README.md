@@ -154,7 +154,7 @@ Reports and extracted data are automatically organized by case:
 ```
 yaft_output/
 ├── CASE2024-01/              # Case ID
-│   └── BG123456-1/           # Evidence ID
+│   └── EV123456-1/           # Evidence ID
 │       ├── reports/          # Generated reports
 │       └── ios_extractions/  # Plugin-specific outputs
 ```
