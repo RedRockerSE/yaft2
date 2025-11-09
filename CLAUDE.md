@@ -358,7 +358,7 @@ ruff format src/ tests/ plugins/
 mypy src/
 
 # Build executables
-python build.py
+python build_exe.py
 
 # Install/update a single package with uv
 uv pip install package-name
@@ -542,10 +542,10 @@ For forensic plugins, create tests covering:
 
 ```bash
 # Build for current platform
-python build.py
+python build_exe.py
 
 # Clean build
-python build.py --clean
+python build_exe.py --clean
 ```
 
 Output: `dist/yaft/` containing executable and `plugins/` directory. New plugins can be added to built executables without recompilation.

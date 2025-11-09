@@ -349,10 +349,10 @@ pip install pyinstaller
 
 ```bash
 # Build for current platform
-python build.py
+python build_exe.py
 
 # Clean build (removes old artifacts)
-python build.py --clean
+python build_exe.py --clean
 
 # Or use platform-specific scripts
 ./build.sh          # Linux/macOS
@@ -405,7 +405,7 @@ yaft/
 ├── docs/
 │   └── SystemRequirements.md    # Project requirements
 ├── config/                       # Configuration files
-├── build.py                      # Build script
+├── build_exe.py                  # Build script for executables
 ├── build.sh                      # Linux/macOS build script
 ├── build.bat                     # Windows build script
 ├── pyproject.toml                # Project configuration
@@ -625,7 +625,7 @@ def test_my_plugin(core_api):
 
 - Ensure PyInstaller is installed: `pip install pyinstaller`
 - Check Python version (requires 3.13+)
-- Clean build directory: `python build.py --clean`
+- Clean build directory: `python build_exe.py --clean`
 - Check for import errors in plugins
 
 ### Import Errors in Built Executable
