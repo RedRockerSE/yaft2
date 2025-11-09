@@ -2,10 +2,10 @@
 
 [![CI](https://github.com/RedRockerSE/yaft2/actions/workflows/ci.yml/badge.svg)](https://github.com/RedRockerSE/yaft2/actions/workflows/ci.yml)
 [![Release](https://github.com/RedRockerSE/yaft2/actions/workflows/release.yml/badge.svg)](https://github.com/RedRockerSE/yaft2/actions/workflows/release.yml)
-[![Python Version](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A plugin-based forensic analysis tool for Python 3.13+ designed for processing and analyzing ZIP archives. Features dynamic plugin loading, beautiful CLI interface, and cross-platform executable builds.
+A plugin-based forensic analysis tool for Python 3.12+ designed for processing and analyzing ZIP archives. Features dynamic plugin loading, beautiful CLI interface, and cross-platform executable builds.
 
 ## Features
 
@@ -135,8 +135,8 @@ YAFT includes built-in support for forensic case management. When running plugin
 
 **Case Identifier Formats:**
 - **Examiner ID**: User/investigator identifier (format: alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
-- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`, `K2024001-01`)
-- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `BG123456-1`, `EV123456-01`)
+- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`)
+- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `EV123456-01`)
 
 **Example Usage:**
 ```bash
@@ -166,7 +166,7 @@ Case identifiers are automatically included in report metadata sections:
 - **Generated**: 2024-01-15 14:30:00
 - **Examiner ID**: john_doe
 - **Case ID**: CASE2024-01
-- **Evidence ID**: BG123456-1
+- **Evidence ID**: EV123456-1
 ```
 
 **Input Validation:**
@@ -349,10 +349,10 @@ pip install pyinstaller
 
 ```bash
 # Build for current platform
-python build.py
+python build_exe.py
 
 # Clean build (removes old artifacts)
-python build.py --clean
+python build_exe.py --clean
 
 # Or use platform-specific scripts
 ./build.sh          # Linux/macOS
@@ -405,7 +405,7 @@ yaft/
 ├── docs/
 │   └── SystemRequirements.md    # Project requirements
 ├── config/                       # Configuration files
-├── build.py                      # Build script
+├── build_exe.py                  # Build script for executables
 ├── build.sh                      # Linux/macOS build script
 ├── build.bat                     # Windows build script
 ├── pyproject.toml                # Project configuration
@@ -625,7 +625,7 @@ def test_my_plugin(core_api):
 
 - Ensure PyInstaller is installed: `pip install pyinstaller`
 - Check Python version (requires 3.13+)
-- Clean build directory: `python build.py --clean`
+- Clean build directory: `python build_exe.py --clean`
 - Check for import errors in plugins
 
 ### Import Errors in Built Executable

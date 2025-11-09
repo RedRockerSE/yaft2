@@ -2,7 +2,7 @@
 REM Build script for Windows
 
 echo Building YAFT for Windows...
-python build.py %*
+python build_exe.py %*
 
 if %ERRORLEVEL% EQU 0 (
     echo.

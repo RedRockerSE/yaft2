@@ -29,7 +29,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.12'
 
     - name: Install uv
       uses: astral-sh/setup-uv@v3
@@ -41,7 +41,7 @@ jobs:
     - name: Build executable with PyInstaller (Windows)
       if: runner.os == 'Windows'
       run: |
-        pyinstaller --name yaft-windows-x64 `
+        python -m PyInstaller --name yaft-windows-x64 `
           --onefile `
           --console `
           --add-data "plugins;plugins" `
@@ -57,7 +57,7 @@ jobs:
     - name: Build executable with PyInstaller (Unix)
       if: runner.os != 'Windows'
       run: |
-        pyinstaller --name ${{ matrix.artifact_name }} \
+        python -m PyInstaller --name ${{ matrix.artifact_name }} \
           --onefile \
           --console \
           --add-data "plugins:plugins" \
@@ -124,7 +124,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.12'
 
     - name: Install build tools
       run: |

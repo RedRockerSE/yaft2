@@ -2,7 +2,7 @@
 # Build script for Linux/macOS
 
 echo "Building YAFT for $(uname -s)..."
-python build.py "$@"
+python build_exe.py "$@"
 
 if [ $? -eq 0 ]; then
     echo ""
