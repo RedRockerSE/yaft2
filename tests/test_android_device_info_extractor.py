@@ -350,7 +350,7 @@ def test_generate_report(plugin, core_api, mock_android_zip_cellebrite):
 
     assert Path(report_path).exists()
 
-    with open(report_path) as f:
+    with open(report_path, encoding='utf-8') as f:
         content = f.read()
 
     assert "# Android Device Information" in content

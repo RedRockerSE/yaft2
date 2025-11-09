@@ -94,6 +94,9 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
             self.core_api.print_info("Extracting Bluetooth information...")
             self._extract_bluetooth_info()
 
+            # Populate top-level metadata for backward compatibility with tests
+            self._populate_top_level_metadata()
+
             # Display summary
             self._display_summary()
 
@@ -144,7 +147,7 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
                     props[key.strip()] = value.strip()
 
             # Map to standardized keys
-            self.metadata_extracted['build_properties'] = {
+            build_props = {
                 'manufacturer': self._get_prop_value(
                     props, ['ro.product.manufacturer', 'ro.product.vendor.manufacturer']
                 ),
@@ -155,7 +158,7 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
                     props, ['ro.product.model', 'ro.product.vendor.model']
                 ),
                 'device': self._get_prop_value(
-                    props, ['ro.product.device', 'ro.product.vendor.device']
+                    props, ['ro.product.device', 'ro.product.vendor.device', 'ro.product.name']
                 ),
                 'android_version': props.get('ro.build.version.release'),
                 'sdk_version': props.get('ro.build.version.sdk'),
@@ -167,6 +170,14 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
                 'bootloader': props.get('ro.bootloader'),
             }
 
+            self.metadata_extracted['build_properties'] = build_props
+
+            # Also populate top-level keys
+            self.metadata_extracted['Manufacturer'] = build_props.get('manufacturer')
+            self.metadata_extracted['Model'] = build_props.get('model')
+            self.metadata_extracted['Android Version'] = build_props.get('android_version')
+            self.metadata_extracted['SDK Level'] = build_props.get('sdk_version')
+
         except (KeyError, Exception) as e:
             self.errors.append({'source': build_prop_path, 'error': str(e)})
             self.core_api.log_error(f"Error parsing build.prop: {e}")
@@ -177,6 +188,11 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
             if key in props:
                 return props[key]
         return None
+
+    def _is_mac_address(self, text: str) -> bool:
+        """Check if a string is a MAC address."""
+        mac_pattern = r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+        return bool(re.match(mac_pattern, text))
 
     def _extract_settings_databases(self) -> None:
         """Extract settings from Android settings databases."""
@@ -194,6 +210,10 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
                 'bluetooth_name': settings_secure.get('bluetooth_name'),
                 'default_input_method': settings_secure.get('default_input_method'),
             }
+
+            # Populate top-level keys
+            self.metadata_extracted['Android ID'] = settings_secure.get('android_id')
+            self.metadata_extracted['Bluetooth Name'] = settings_secure.get('bluetooth_name')
 
         except (KeyError, Exception) as e:
             self.errors.append({'source': settings_secure_path, 'error': str(e)})
@@ -217,6 +237,18 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
                 == '1',
             }
 
+            # Populate top-level keys
+            self.metadata_extracted['Device Name'] = settings_global.get('device_name')
+
+            # Security warnings
+            security_warnings = []
+            if settings_global.get('adb_enabled') == '1':
+                security_warnings.append("ADB Enabled: Yes")
+            if settings_global.get('development_settings_enabled') == '1':
+                security_warnings.append("Developer Mode Enabled: Yes")
+            if security_warnings:
+                self.metadata_extracted['Security Warnings'] = security_warnings
+
         except (KeyError, Exception) as e:
             self.errors.append({'source': settings_global_path, 'error': str(e)})
             self.core_api.log_warning(f"Could not extract settings_global.db: {e}")
@@ -237,11 +269,30 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
                 FROM siminfo
             """
 
+            # Fallback query for older/simpler database schemas
+            fallback_query = """
+                SELECT
+                    display_name,
+                    icc_id,
+                    number as phone_number,
+                    NULL as mcc,
+                    NULL as mnc,
+                    NULL as carrier_name
+                FROM siminfo
+            """
+
             results = self.core_api.query_sqlite_from_zip_dict(
-                self._normalize_path(telephony_path), query
+                self._normalize_path(telephony_path), query, fallback_query=fallback_query
             )
 
             self.metadata_extracted['telephony'] = results
+
+            # Populate top-level keys from first SIM
+            if results:
+                sim_info = results[0]
+                self.metadata_extracted['ICCID'] = sim_info.get('icc_id')
+                self.metadata_extracted['Carrier'] = sim_info.get('display_name')
+                self.metadata_extracted['Phone Number'] = sim_info.get('phone_number')
 
         except (KeyError, Exception) as e:
             self.errors.append({'source': telephony_path, 'error': str(e)})
@@ -264,6 +315,14 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
             )
 
             self.metadata_extracted['accounts'] = results
+
+            # Populate top-level accounts as formatted strings
+            if results:
+                formatted_accounts = []
+                for account in results:
+                    account_str = f"{account.get('account_name', 'Unknown')} ({account.get('account_type', 'Unknown')})"
+                    formatted_accounts.append(account_str)
+                self.metadata_extracted['Accounts'] = formatted_accounts
 
         except (KeyError, Exception) as e:
             self.errors.append({'source': accounts_path, 'error': str(e)})
@@ -304,14 +363,19 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
 
                 # Section headers
                 if line.startswith('[') and line.endswith(']'):
-                    if current_section and current_section.startswith('Remote'):
-                        bt_info['paired_devices'].append(device_info)
+                    # Save previous device if it was a paired device
+                    if current_section and (current_section.startswith('Remote') or self._is_mac_address(current_section)):
+                        if device_info:
+                            bt_info['paired_devices'].append(device_info)
 
                     current_section = line[1:-1]
                     device_info = {}
 
+                    # Handle both "Remote XX:XX:XX:XX:XX:XX" and "XX:XX:XX:XX:XX:XX" formats
                     if current_section.startswith('Remote'):
                         device_info['address'] = current_section.replace('Remote ', '')
+                    elif self._is_mac_address(current_section):
+                        device_info['address'] = current_section
 
                 # Key-value pairs
                 elif '=' in line:
@@ -319,23 +383,84 @@ class AndroidDeviceInfoExtractorPlugin(PluginBase):
                     key = key.strip()
                     value = value.strip()
 
-                    if current_section == 'Local':
+                    # Handle both "Local" and "Adapter" sections for local device
+                    if current_section in ('Local', 'Adapter'):
                         if key == 'Address':
                             bt_info['local_address'] = value
                         elif key == 'Name':
                             bt_info['local_name'] = value
-                    elif current_section and current_section.startswith('Remote'):
+                    elif current_section and (current_section.startswith('Remote') or self._is_mac_address(current_section)):
                         device_info[key.lower()] = value
 
             # Don't forget last device
-            if current_section and current_section.startswith('Remote') and device_info:
+            if current_section and (current_section.startswith('Remote') or self._is_mac_address(current_section)) and device_info:
                 bt_info['paired_devices'].append(device_info)
 
             self.metadata_extracted['bluetooth'] = bt_info
 
+            # Populate top-level Bluetooth paired devices
+            if bt_info.get('paired_devices'):
+                bt_devices = []
+                for device in bt_info['paired_devices']:
+                    device_str = f"{device.get('name', 'Unknown')} ({device.get('address', 'Unknown')})"
+                    bt_devices.append(device_str)
+                self.metadata_extracted['Paired Bluetooth Devices'] = bt_devices
+
         except (KeyError, Exception) as e:
             self.errors.append({'source': bt_config_path, 'error': str(e)})
             self.core_api.log_warning(f"Could not extract Bluetooth info: {e}")
+
+    def _populate_top_level_metadata(self) -> None:
+        """Populate top-level metadata keys for backward compatibility."""
+        build = self.metadata_extracted.get('build_properties', {})
+        settings_secure = self.metadata_extracted.get('settings_secure', {})
+        settings_global = self.metadata_extracted.get('settings_global', {})
+        telephony = self.metadata_extracted.get('telephony', [])
+        accounts = self.metadata_extracted.get('accounts', [])
+        bluetooth = self.metadata_extracted.get('bluetooth', {})
+
+        # Populate top-level keys from build properties
+        self.metadata_extracted['Manufacturer'] = build.get('manufacturer')
+        self.metadata_extracted['Model'] = build.get('model')
+        self.metadata_extracted['Android Version'] = build.get('android_version')
+        self.metadata_extracted['SDK Level'] = build.get('sdk_version')
+
+        # Populate from settings
+        self.metadata_extracted['Android ID'] = settings_secure.get('android_id')
+        self.metadata_extracted['Device Name'] = settings_global.get('device_name')
+        self.metadata_extracted['Bluetooth Name'] = settings_secure.get('bluetooth_name')
+
+        # Populate from telephony
+        if telephony:
+            sim_info = telephony[0]
+            self.metadata_extracted['ICCID'] = sim_info.get('icc_id')
+            self.metadata_extracted['Carrier'] = sim_info.get('display_name')
+            self.metadata_extracted['Phone Number'] = sim_info.get('phone_number')
+
+        # Populate accounts as formatted strings
+        if accounts:
+            formatted_accounts = []
+            for account in accounts:
+                account_str = f"{account.get('account_name', 'Unknown')} ({account.get('account_type', 'Unknown')})"
+                formatted_accounts.append(account_str)
+            self.metadata_extracted['Accounts'] = formatted_accounts
+
+        # Populate Bluetooth paired devices
+        if bluetooth.get('paired_devices'):
+            bt_devices = []
+            for device in bluetooth['paired_devices']:
+                device_str = f"{device.get('name', 'Unknown')} ({device.get('address', 'Unknown')})"
+                bt_devices.append(device_str)
+            self.metadata_extracted['Paired Bluetooth Devices'] = bt_devices
+
+        # Security warnings
+        security_warnings = []
+        if settings_global.get('adb_enabled'):
+            security_warnings.append("ADB Enabled: Yes")
+        if settings_global.get('development_settings_enabled'):
+            security_warnings.append("Developer Mode Enabled: Yes")
+        if security_warnings:
+            self.metadata_extracted['Security Warnings'] = security_warnings
 
     def _format_device_info(self) -> Dict[str, Any]:
         """Format extracted metadata into structured output."""

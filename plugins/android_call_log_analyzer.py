@@ -159,21 +159,21 @@ class AndroidCallLogAnalyzerPlugin(PluginBase):
                 ORDER BY date DESC
             """
 
-            # Fallback query for older Android versions (fewer columns)
+            # Fallback query for older/minimal Android versions (fewer columns)
             fallback_query = """
                 SELECT
                     number,
                     date,
                     duration,
                     type,
-                    name,
-                    numbertype,
-                    numberlabel,
+                    NULL as name,
+                    NULL as numbertype,
+                    NULL as numberlabel,
                     NULL as countryiso,
                     NULL as geocoded_location,
                     NULL as data_usage,
                     NULL as features,
-                    NULL as is_read,
+                    is_read,
                     NULL as new,
                     _id
                 FROM calls
