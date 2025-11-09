@@ -59,9 +59,9 @@ YaFT includes built-in support for forensic case identifier management. The CLI 
 
 ### Case Identifier Formats
 
-- **Examiner ID**: User/investigator identifier (format: alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
-- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`)
-- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `EV123456-01`)
+- **Examiner ID**: User/investigator identifier (alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
+- **Case ID**: Case number (any alphanumeric string - e.g., `CASE2024-01`, `Case123`, `MyCase`)
+- **Evidence ID**: Evidence number (any alphanumeric string - e.g., `BG123456-1`, `Evidence1`, `Ev-001`)
 
 ### Core API Methods
 

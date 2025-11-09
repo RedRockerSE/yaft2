@@ -199,31 +199,31 @@ class CoreAPI:
 
     def validate_case_id(self, value: str) -> bool:
         """
-        Validate Case ID format: uppercase alphanumeric with optional dash and numbers.
-        Examples: CASE2024-01, K2024001-01, 2024-001
+        Validate Case ID format: any alphanumeric string.
+        Examples: CASE2024-01, K2024001-01, 2024-001, Case123, MyCase
 
         Args:
             value: Case ID to validate
 
         Returns:
-            bool: True if valid, False otherwise
+            bool: True if valid (any non-empty alphanumeric string), False otherwise
         """
         import re
-        return bool(re.match(r'^[A-Z0-9]{4,}-[0-9]{2,}$', value))
+        return bool(re.match(r'^[A-Za-z0-9_-]+$', value))
 
     def validate_evidence_id(self, value: str) -> bool:
         """
-        Validate Evidence ID format: 2-4 uppercase letters followed by 4-8 digits, dash, 1-2 digits.
-        Examples: BG123456-1, EV123456-1, ITEM1234-01
+        Validate Evidence ID format: any alphanumeric string.
+        Examples: BG123456-1, EV123456-1, ITEM1234-01, Evidence1, Ev-001
 
         Args:
             value: Evidence ID to validate
 
         Returns:
-            bool: True if valid, False otherwise
+            bool: True if valid (any non-empty alphanumeric string), False otherwise
         """
         import re
-        return bool(re.match(r'^[A-Z]{2,4}[0-9]{4,8}-[0-9]{1,2}$', value))
+        return bool(re.match(r'^[A-Za-z0-9_-]+$', value))
 
     def prompt_for_case_identifiers(self) -> tuple[str, str, str]:
         """
@@ -247,19 +247,17 @@ class CoreAPI:
 
         # Prompt for Case ID
         while True:
-            case_id = self.console.input("[bold cyan]?[/bold cyan] Case ID (format: CASE2024-01): ").strip()
+            case_id = self.console.input("[bold cyan]?[/bold cyan] Case ID (alphanumeric): ").strip()
             if self.validate_case_id(case_id):
-                case_id = case_id.upper()  # Normalize to uppercase
                 break
-            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: 4+ uppercase alphanumeric, dash, 2+ digits (e.g., CASE2024-01, K2024001-01)")
+            self.console.print("[bold red]✗[/bold red] Invalid format. Use alphanumeric characters, underscores, or hyphens (e.g., CASE2024-01, Case123, MyCase)")
 
         # Prompt for Evidence ID
         while True:
-            evidence_id = self.console.input("[bold cyan]?[/bold cyan] Evidence ID (format: BG123456-1): ").strip()
+            evidence_id = self.console.input("[bold cyan]?[/bold cyan] Evidence ID (alphanumeric): ").strip()
             if self.validate_evidence_id(evidence_id):
-                evidence_id = evidence_id.upper()  # Normalize to uppercase
                 break
-            self.console.print("[bold red]✗[/bold red] Invalid format. Expected: 2-4 letters, 4-8 digits, dash, 1-2 digits (e.g., BG123456-1, EV1234-01)")
+            self.console.print("[bold red]✗[/bold red] Invalid format. Use alphanumeric characters, underscores, or hyphens (e.g., BG123456-1, Evidence1, Ev-001)")
 
         # Store identifiers
         self._examiner_id = examiner_id
@@ -294,20 +292,16 @@ class CoreAPI:
         Raises:
             ValueError: If any identifier has invalid format
         """
-        # Normalize case_id and evidence_id to uppercase before validation
-        case_id_normalized = case_id.upper()
-        evidence_id_normalized = evidence_id.upper()
-
         if not self.validate_examiner_id(examiner_id):
             raise ValueError(f"Invalid Examiner ID format: {examiner_id}")
-        if not self.validate_case_id(case_id_normalized):
+        if not self.validate_case_id(case_id):
             raise ValueError(f"Invalid Case ID format: {case_id}")
-        if not self.validate_evidence_id(evidence_id_normalized):
+        if not self.validate_evidence_id(evidence_id):
             raise ValueError(f"Invalid Evidence ID format: {evidence_id}")
 
         self._examiner_id = examiner_id
-        self._case_id = case_id_normalized
-        self._evidence_id = evidence_id_normalized
+        self._case_id = case_id
+        self._evidence_id = evidence_id
 
     def get_case_output_dir(self, subdir: str = "") -> Path:
         """
