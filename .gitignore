@@ -70,3 +70,7 @@ outputs/
 logs/   
 yaft_output/
 nul
+
+# Claude files
+CLAUDE.md
+
