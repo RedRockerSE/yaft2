@@ -60,8 +60,8 @@ YaFT includes built-in support for forensic case identifier management. The CLI 
 ### Case Identifier Formats
 
 - **Examiner ID**: User/investigator identifier (format: alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
-- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`, `K2024001-01`)
-- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `BG123456-1`, `EV123456-01`)
+- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`)
+- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `EV123456-01`)
 
 ### Core API Methods
 
@@ -69,10 +69,10 @@ YaFT includes built-in support for forensic case identifier management. The CLI 
 # Validation (returns True/False)
 self.core_api.validate_examiner_id("john_doe")
 self.core_api.validate_case_id("CASE2024-01")
-self.core_api.validate_evidence_id("BG123456-1")
+self.core_api.validate_evidence_id("EV123456-1")
 
 # Set case identifiers programmatically
-self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "BG123456-1")
+self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "EV123456-1")
 
 # Get current case identifiers (returns tuple of strings or None values)
 examiner, case, evidence = self.core_api.get_case_identifiers()
@@ -89,7 +89,7 @@ When case identifiers are set, all plugin outputs are organized in case-based di
 ```
 yaft_output/
 ├── CASE2024-01/              # Case ID
-│   └── BG123456-1/           # Evidence ID
+│   └── EV123456-1/           # Evidence ID
 │       ├── reports/          # Generated reports (includes case IDs in metadata)
 │       ├── ios_extractions/  # Plugin-specific outputs
 │       └── android_extractions/
