@@ -6,7 +6,7 @@ Thank you for your interest in contributing to YAFT! This document provides guid
 
 1. **Fork and Clone**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/yaft.git
+   git clone https://github.com/RedRockerSE/yaft2.git
    cd yaft
    ```
 
