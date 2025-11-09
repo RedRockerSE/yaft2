@@ -439,35 +439,34 @@ def test_validate_examiner_id(core_api):
 
 def test_validate_case_id(core_api):
     """Test Case ID validation."""
-    # Valid formats
+    # Valid formats - any alphanumeric string
     assert core_api.validate_case_id("CASE2024-01") is True
-    assert core_api.validate_case_id("K2024001-01") is True
+    assert core_api.validate_case_id("case2024-01") is True  # Lowercase allowed
+    assert core_api.validate_case_id("Case123") is True
+    assert core_api.validate_case_id("MyCase") is True
     assert core_api.validate_case_id("2024-001") is True
-    assert core_api.validate_case_id("ABCD-99") is True
+    assert core_api.validate_case_id("ABC_DEF-123") is True
 
     # Invalid formats
-    assert core_api.validate_case_id("case2024-01") is False  # Lowercase not allowed
-    assert core_api.validate_case_id("ABC-01") is False  # First part too short
-    assert core_api.validate_case_id("CASE2024-1") is False  # Second part too short
-    assert core_api.validate_case_id("CASE2024") is False  # Missing dash and suffix
-    assert core_api.validate_case_id("CASE-2024-01") is False  # Too many dashes
+    assert core_api.validate_case_id("") is False  # Empty string
+    assert core_api.validate_case_id("CASE 2024") is False  # Spaces not allowed
+    assert core_api.validate_case_id("CASE@2024") is False  # Special chars not allowed
 
 
 def test_validate_evidence_id(core_api):
     """Test Evidence ID validation."""
-    # Valid formats
+    # Valid formats - any alphanumeric string
     assert core_api.validate_evidence_id("BG123456-1") is True
-    assert core_api.validate_evidence_id("EV123456-01") is True
-    assert core_api.validate_evidence_id("ITEM1234-1") is True
-    assert core_api.validate_evidence_id("AB1234-99") is True
+    assert core_api.validate_evidence_id("bg123456-1") is True  # Lowercase allowed
+    assert core_api.validate_evidence_id("Evidence1") is True
+    assert core_api.validate_evidence_id("Ev-001") is True
+    assert core_api.validate_evidence_id("ITEM_ABC-123") is True
+    assert core_api.validate_evidence_id("MyEvidence") is True
 
     # Invalid formats
-    assert core_api.validate_evidence_id("bg123456-1") is False  # Lowercase not allowed
-    assert core_api.validate_evidence_id("A123456-1") is False  # Letter part too short
-    assert core_api.validate_evidence_id("ABCDE123456-1") is False  # Letter part too long
-    assert core_api.validate_evidence_id("BG123-1") is False  # Number part too short
-    assert core_api.validate_evidence_id("BG123456-123") is False  # Suffix too long
-    assert core_api.validate_evidence_id("BG123456") is False  # Missing dash and suffix
+    assert core_api.validate_evidence_id("") is False  # Empty string
+    assert core_api.validate_evidence_id("BG 123456") is False  # Spaces not allowed
+    assert core_api.validate_evidence_id("BG@123456") is False  # Special chars not allowed
 
 
 def test_set_and_get_case_identifiers(core_api):
@@ -482,15 +481,15 @@ def test_set_and_get_case_identifiers(core_api):
 
 
 def test_set_case_identifiers_normalization(core_api):
-    """Test case identifier normalization."""
-    # Case ID and Evidence ID should be uppercase
+    """Test case identifier storage (no normalization)."""
+    # Identifiers should be stored as-is (no uppercasing)
     core_api.set_case_identifiers("john_doe", "case2024-01", "bg999888-7")
 
     examiner, case, evidence = core_api.get_case_identifiers()
 
-    assert examiner == "john_doe"  # Kept as-is
-    assert case == "CASE2024-01"  # Normalized to uppercase
-    assert evidence == "BG999888-7"  # Normalized to uppercase
+    assert examiner == "john_doe"
+    assert case == "case2024-01"  # Stored as-is
+    assert evidence == "bg999888-7"  # Stored as-is
 
 
 def test_set_case_identifiers_invalid(core_api):
@@ -499,10 +498,10 @@ def test_set_case_identifiers_invalid(core_api):
         core_api.set_case_identifiers("x", "CASE2024-01", "BG123456-1")
 
     with pytest.raises(ValueError, match="Invalid Case ID"):
-        core_api.set_case_identifiers("examiner01", "invalid", "BG123456-1")
+        core_api.set_case_identifiers("examiner01", "invalid@case", "BG123456-1")  # @ not allowed
 
     with pytest.raises(ValueError, match="Invalid Evidence ID"):
-        core_api.set_case_identifiers("examiner01", "CASE2024-01", "invalid")
+        core_api.set_case_identifiers("examiner01", "CASE2024-01", "invalid@ev")  # @ not allowed
 
 
 def test_get_case_output_dir_with_identifiers(core_api):
