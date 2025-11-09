@@ -71,6 +71,5 @@ logs/
 yaft_output/
 nul
 
-# Claude files
-CLAUDE.md
+# Claude files (local development only)
 .claude/
