@@ -135,8 +135,8 @@ YAFT includes built-in support for forensic case management. When running plugin
 
 **Case Identifier Formats:**
 - **Examiner ID**: User/investigator identifier (format: alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
-- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`, `K2024001-01`)
-- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `BG123456-1`, `EV123456-01`)
+- **Case ID**: Case number (format: 4+ uppercase alphanumeric characters, dash, 2+ digits - e.g., `CASE2024-01`)
+- **Evidence ID**: Evidence number (format: 2-4 uppercase letters, 4-8 digits, dash, 1-2 digits - e.g., `EV123456-01`)
 
 **Example Usage:**
 ```bash
@@ -166,7 +166,7 @@ Case identifiers are automatically included in report metadata sections:
 - **Generated**: 2024-01-15 14:30:00
 - **Examiner ID**: john_doe
 - **Case ID**: CASE2024-01
-- **Evidence ID**: BG123456-1
+- **Evidence ID**: EV123456-1
 ```
 
 **Input Validation:**
