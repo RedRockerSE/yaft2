@@ -74,5 +74,5 @@ nul
 # Claude files (local development only)
 .claude/
 
-¤ Research files
+# Research files
 research/
