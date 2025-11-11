@@ -191,6 +191,57 @@ dicts = self.core_api.query_sqlite_from_zip_dict(
 - No need for `tempfile`, `sqlite3`, `plistlib`, or `xml.etree.ElementTree` imports in plugins
 - Consistent error handling across all plugins
 
+### Forensic ZIP Format Detection
+
+The Core API automatically detects the format of forensic ZIP extractions from different tools (Cellebrite, GrayKey) and operating systems (iOS, Android):
+
+```python
+# Detect extraction format
+format_type, prefix = self.core_api.detect_zip_format()
+# Returns: ("cellebrite_ios", "filesystem1/") or ("graykey_android", "") etc.
+
+# Normalize a filesystem path with the detected prefix
+full_path = self.core_api.normalize_zip_path("data/data/com.example.app/databases/app.db", prefix)
+# Returns: "Dump/data/data/com.example.app/databases/app.db" (Cellebrite Android)
+# Or: "data/data/com.example.app/databases/app.db" (GrayKey Android)
+```
+
+**Supported Formats:**
+
+| Format Type | OS | Tool | Root Folders | Path Prefix |
+|-------------|-----|------|--------------|-------------|
+| `cellebrite_ios` | iOS | Cellebrite | `filesystem1/` or `filesystem/` | `filesystem1/` or `filesystem/` |
+| `cellebrite_android` | Android | Cellebrite | `Dump/` and `extra/` | `Dump/` |
+| `cellebrite_android` | Android | Cellebrite (legacy) | `fs/` | `fs/` |
+| `graykey_ios` | iOS | GrayKey | `private/`, `System/`, `Library/`, etc. | (no prefix) |
+| `graykey_android` | Android | GrayKey | `apex/`, `data/`, `system/`, `cache/`, etc. | (no prefix) |
+| `unknown` | Any | Unknown | Various | (no prefix) |
+
+**Detection Logic:**
+1. Scans root-level folders in the ZIP archive (first 100 entries)
+2. Identifies characteristic folder patterns for each format:
+   - **Cellebrite Android**: `Dump/` and/or `extra/` folders
+   - **Cellebrite iOS**: `filesystem1/` or `filesystem/` folder
+   - **GrayKey Android**: 3+ matches from `apex/`, `bootstrap-apex/`, `cache/`, `data/`, `data-mirror/`, `efs/`, `system/`
+   - **GrayKey iOS**: 2+ matches from `private/`, `System/`, `Library/`, `Applications/`, `var/`
+3. Falls back to deeper file structure analysis if root folders don't match
+
+**Plugin Usage:**
+```python
+def execute(self, *args, **kwargs):
+    # Detect format
+    format_type, prefix = self.core_api.detect_zip_format()
+
+    # Use the prefix for all file paths
+    if "android" in format_type:
+        db_path = self.core_api.normalize_zip_path("data/data/com.example/databases/app.db", prefix)
+    elif "ios" in format_type:
+        plist_path = self.core_api.normalize_zip_path("System/Library/CoreServices/SystemVersion.plist", prefix)
+
+    # Read files with normalized paths
+    data = self.core_api.read_plist_from_zip(plist_path)
+```
+
 ## Unified Report Generation
 
 All plugins should use the CoreAPI's `generate_report()` method for consistent markdown report generation:

@@ -177,7 +177,7 @@ def test_detect_zip_structure_cellebrite(plugin, core_api, mock_ios_zip_cellebri
     core_api.set_zip_file(mock_ios_zip_cellebrite)
     plugin._detect_zip_structure()
 
-    assert plugin.extraction_type == "cellebrite"
+    assert plugin.extraction_type == "cellebrite_ios"
     assert plugin.zip_prefix == "filesystem1/"
 
 
@@ -186,7 +186,7 @@ def test_detect_zip_structure_graykey(plugin, core_api, mock_ios_zip_graykey):
     core_api.set_zip_file(mock_ios_zip_graykey)
     plugin._detect_zip_structure()
 
-    assert plugin.extraction_type == "graykey"
+    assert plugin.extraction_type == "graykey_ios"
     assert plugin.zip_prefix == ""
 
 
