@@ -151,6 +151,64 @@ def mock_android_zip_graykey(tmp_path):
     return zip_path
 
 
+@pytest.fixture
+def mock_android_zip_samsung(tmp_path):
+    """Create a mock Android extraction ZIP with Samsung-specific call log path."""
+    zip_path = tmp_path / "android_extraction_samsung.zip"
+
+    # Create calllog database
+    calllog_db = tmp_path / "calllog_samsung.db"
+    conn = sqlite3.connect(calllog_db)
+    cursor = conn.cursor()
+
+    # Create calls table with full schema
+    cursor.execute("""
+        CREATE TABLE calls (
+            _id INTEGER PRIMARY KEY,
+            number TEXT,
+            date INTEGER,
+            duration INTEGER,
+            type INTEGER,
+            name TEXT,
+            numbertype INTEGER,
+            numberlabel TEXT,
+            countryiso TEXT,
+            geocoded_location TEXT,
+            is_read INTEGER,
+            features INTEGER,
+            data_usage INTEGER,
+            new INTEGER
+        )
+    """)
+
+    base_timestamp = 1705329000000
+
+    # Insert sample call records
+    calls = [
+        (1, '+82-10-1234-5678', base_timestamp, 200, 2, 'Kim Samsung', 1, 'Mobile', 'kr', 'Seoul', 1, 0, 0, 0),
+        (2, '+82-10-9876-5432', base_timestamp - 3600000, 150, 1, 'Lee Galaxy', 2, 'Work', 'kr', None, 1, 0, 0, 0),
+        (3, '+82-10-5555-1234', base_timestamp - 7200000, 0, 3, None, 1, 'Mobile', 'kr', None, 1, 0, 0, 0),
+    ]
+
+    for call in calls:
+        cursor.execute(
+            "INSERT INTO calls (_id, number, date, duration, type, name, numbertype, numberlabel, countryiso, geocoded_location, is_read, features, data_usage, new) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            call
+        )
+
+    conn.commit()
+    conn.close()
+
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        # Samsung-specific path (Cellebrite extraction with Dump/ prefix)
+        zf.write(
+            calllog_db,
+            "Dump/data/data/com.samsung.android.providers.contacts/databases/calllog.db"
+        )
+
+    return zip_path
+
+
 def test_plugin_metadata(plugin):
     """Test plugin metadata is correctly defined."""
     metadata = plugin.metadata
@@ -219,6 +277,59 @@ def test_parse_call_log_graykey(plugin, core_api, mock_android_zip_graykey):
     # Verify fallback query works when newer columns don't exist
     assert all('phone_number' in call for call in calls)
     assert all('timestamp' in call for call in calls)
+
+
+def test_parse_call_log_samsung(plugin, core_api, mock_android_zip_samsung):
+    """Test parsing calllog.db from Samsung-specific path."""
+    core_api.set_zip_file(mock_android_zip_samsung)
+    plugin._detect_zip_structure()
+
+    calls = plugin._parse_call_log()
+
+    assert len(calls) == 3
+    # Verify Samsung-specific path was found and parsed
+    assert calls[0]['phone_number'] == '+82-10-1234-5678'
+    assert calls[0]['contact_name'] == 'Kim Samsung'
+    assert calls[1]['phone_number'] == '+82-10-9876-5432'
+    assert calls[2]['phone_number'] == '+82-10-5555-1234'
+
+
+def test_samsung_path_fallback(plugin, core_api, tmp_path):
+    """Test that plugin tries multiple paths and finds Samsung-specific path."""
+    # Create ZIP with ONLY Samsung path (no standard path)
+    zip_path = tmp_path / "samsung_only.zip"
+
+    calllog_db = tmp_path / "calllog_only_samsung.db"
+    conn = sqlite3.connect(calllog_db)
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE calls (
+            _id INTEGER PRIMARY KEY,
+            number TEXT,
+            date INTEGER,
+            duration INTEGER,
+            type INTEGER,
+            is_read INTEGER
+        )
+    """)
+    cursor.execute("INSERT INTO calls VALUES (1, '+82-10-1111-2222', 1705329000000, 100, 2, 1)")
+    conn.commit()
+    conn.close()
+
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        # Only add Samsung path, NOT standard path
+        zf.write(
+            calllog_db,
+            "Dump/data/data/com.samsung.android.providers.contacts/databases/calllog.db"
+        )
+
+    core_api.set_zip_file(zip_path)
+    plugin._detect_zip_structure()
+    calls = plugin._parse_call_log()
+
+    # Should successfully find and parse Samsung-specific database
+    assert len(calls) == 1
+    assert calls[0]['phone_number'] == '+82-10-1111-2222'
 
 
 def test_format_duration(plugin):

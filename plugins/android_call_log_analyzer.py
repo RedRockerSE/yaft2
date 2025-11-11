@@ -133,73 +133,98 @@ class AndroidCallLogAnalyzerPlugin(PluginBase):
         return self.core_api.normalize_zip_path(path, self.zip_prefix)
 
     def _parse_call_log(self) -> List[Dict[str, Any]]:
-        """Parse calllog.db database for call records."""
-        calllog_path = 'data/data/com.android.providers.contacts/databases/calllog.db'
+        """Parse calllog.db database for call records with vendor-specific path fallback."""
+        # Define potential call log paths (try in order)
+        calllog_paths = [
+            # Standard Android path
+            'data/data/com.android.providers.contacts/databases/calllog.db',
+            # Samsung-specific path
+            'data/data/com.samsung.android.providers.contacts/databases/calllog.db',
+            # Samsung secondary logs database
+            'data/data/com.sec.android.provider.logsprovider/databases/logs.db',
+        ]
+
         calls = []
+        found_db = False
 
-        try:
-            # Main query for call records
-            query = """
-                SELECT
-                    number,
-                    date,
-                    duration,
-                    type,
-                    name,
-                    numbertype,
-                    numberlabel,
-                    countryiso,
-                    geocoded_location,
-                    data_usage,
-                    features,
-                    is_read,
-                    new,
-                    _id
-                FROM calls
-                ORDER BY date DESC
-            """
+        # Main query for call records
+        query = """
+            SELECT
+                number,
+                date,
+                duration,
+                type,
+                name,
+                numbertype,
+                numberlabel,
+                countryiso,
+                geocoded_location,
+                data_usage,
+                features,
+                is_read,
+                new,
+                _id
+            FROM calls
+            ORDER BY date DESC
+        """
 
-            # Fallback query for older/minimal Android versions (fewer columns)
-            fallback_query = """
-                SELECT
-                    number,
-                    date,
-                    duration,
-                    type,
-                    NULL as name,
-                    NULL as numbertype,
-                    NULL as numberlabel,
-                    NULL as countryiso,
-                    NULL as geocoded_location,
-                    NULL as data_usage,
-                    NULL as features,
-                    is_read,
-                    NULL as new,
-                    _id
-                FROM calls
-                ORDER BY date DESC
-            """
+        # Fallback query for older/minimal Android versions (fewer columns)
+        fallback_query = """
+            SELECT
+                number,
+                date,
+                duration,
+                type,
+                NULL as name,
+                NULL as numbertype,
+                NULL as numberlabel,
+                NULL as countryiso,
+                NULL as geocoded_location,
+                NULL as data_usage,
+                NULL as features,
+                is_read,
+                NULL as new,
+                _id
+            FROM calls
+            ORDER BY date DESC
+        """
 
-            results = self.core_api.query_sqlite_from_zip_dict(
-                self._normalize_path(calllog_path),
-                query,
-                fallback_query=fallback_query
-            )
+        # Try each path until we find a valid database
+        for calllog_path in calllog_paths:
+            try:
+                self.core_api.log_info(f"Attempting to read call log from: {calllog_path}")
 
-            for row in results:
-                call = self._process_call_record(row)
-                if call:
-                    calls.append(call)
+                results = self.core_api.query_sqlite_from_zip_dict(
+                    self._normalize_path(calllog_path),
+                    query,
+                    fallback_query=fallback_query
+                )
 
-        except KeyError:
+                for row in results:
+                    call = self._process_call_record(row)
+                    if call:
+                        calls.append(call)
+
+                found_db = True
+                self.core_api.print_success(f"Successfully parsed call log from: {calllog_path}")
+                break  # Found database, stop trying other paths
+
+            except KeyError:
+                # Database not found at this path, try next
+                self.core_api.log_debug(f"Call log database not found at: {calllog_path}")
+                continue
+            except Exception as e:
+                # Error querying this database, log and try next
+                self.core_api.log_warning(f"Error parsing {calllog_path}: {e}")
+                continue
+
+        if not found_db:
+            error_msg = f"Call log database not found in any of the expected paths: {', '.join(calllog_paths)}"
             self.errors.append({
-                'source': calllog_path,
-                'error': 'calllog.db not found in ZIP',
+                'source': 'calllog.db',
+                'error': error_msg,
             })
-            self.core_api.log_warning("calllog.db not found in ZIP")
-        except Exception as e:
-            self.errors.append({'source': calllog_path, 'error': str(e)})
-            self.core_api.log_error(f"Error parsing calllog.db: {e}")
+            self.core_api.print_warning(error_msg)
 
         return calls
 
