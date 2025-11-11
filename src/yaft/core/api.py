@@ -758,15 +758,15 @@ class CoreAPI:
 
         Returns:
             tuple[str, str]: A tuple of (format_type, path_prefix) where:
-                - format_type: "cellebrite", "graykey", or "unknown"
-                - path_prefix: The prefix to use for paths ("filesystem1/", "fs/", or "")
+                - format_type: "cellebrite_ios", "cellebrite_android", "graykey_ios", "graykey_android", or "unknown"
+                - path_prefix: The prefix to use for paths ("filesystem1/", "Dump/", or "")
 
         Raises:
             RuntimeError: If no ZIP file is currently loaded
 
         Examples:
             >>> format_type, prefix = api.detect_zip_format()
-            >>> if format_type == "cellebrite":
+            >>> if format_type == "cellebrite_ios":
             ...     full_path = prefix + "System/Library/CoreServices/SystemVersion.plist"
         """
         if not self._zip_handle:
@@ -774,41 +774,64 @@ class CoreAPI:
 
         files = self.list_zip_contents()
 
-        # Check for Cellebrite iOS format (filesystem1/ or filesystem/)
-        for file_info in files[:20]:
+        # Get root-level folders (check first 100 entries to find directories)
+        root_folders = set()
+        for file_info in files[:100]:
             filename = file_info.filename
-            if filename.startswith('filesystem1/'):
-                self.log_info("Detected format: Cellebrite iOS (filesystem1/)")
-                return ("cellebrite", "filesystem1/")
-            elif filename.startswith('filesystem/') and not filename.startswith('filesystem1/'):
-                self.log_info("Detected format: Cellebrite iOS (filesystem/)")
-                return ("cellebrite", "filesystem/")
-            elif filename.startswith('fs/'):
-                self.log_info("Detected format: Cellebrite Android (fs/)")
-                return ("cellebrite", "fs/")
+            # Extract the first-level folder
+            parts = filename.split('/')
+            if len(parts) > 1:
+                root_folders.add(parts[0] + '/')
 
-        # Check if it's GrayKey or raw filesystem format (no prefix)
-        # Look for iOS paths
+        # Check for Cellebrite Android format (Dump/ and extra/ folders)
+        if 'Dump/' in root_folders or 'extra/' in root_folders:
+            self.log_info("Detected format: Cellebrite Android (Dump/extra/)")
+            return ("cellebrite_android", "Dump/")
+
+        # Check for Cellebrite iOS format (filesystem1/ or filesystem/)
+        if 'filesystem1/' in root_folders:
+            self.log_info("Detected format: Cellebrite iOS (filesystem1/)")
+            return ("cellebrite_ios", "filesystem1/")
+        elif 'filesystem/' in root_folders:
+            self.log_info("Detected format: Cellebrite iOS (filesystem/)")
+            return ("cellebrite_ios", "filesystem/")
+
+        # Check for legacy Cellebrite Android format (fs/)
+        if 'fs/' in root_folders:
+            self.log_info("Detected format: Cellebrite Android (fs/)")
+            return ("cellebrite_android", "fs/")
+
+        # Check for GrayKey Android format (characteristic root folders)
+        graykey_android_folders = {'apex/', 'bootstrap-apex/', 'cache/', 'data/', 'data-mirror/', 'efs/', 'system/'}
+        if len(graykey_android_folders & root_folders) >= 3:  # At least 3 matches
+            self.log_info("Detected format: GrayKey Android (no prefix)")
+            return ("graykey_android", "")
+
+        # Check for GrayKey iOS format (characteristic iOS paths)
+        graykey_ios_folders = {'private/', 'System/', 'Library/', 'Applications/', 'var/'}
+        if len(graykey_ios_folders & root_folders) >= 2:  # At least 2 matches
+            self.log_info("Detected format: GrayKey iOS (no prefix)")
+            return ("graykey_ios", "")
+
+        # Fallback: Look deeper into file structure
         for file_info in files[:50]:
             filename = file_info.filename.lower()
+            # iOS indicators
             if (
                 filename.startswith('private/var/')
                 or filename.startswith('system/library/')
                 or filename.startswith('library/')
             ):
                 self.log_info("Detected format: GrayKey/Raw iOS filesystem (no prefix)")
-                return ("graykey", "")
-
-        # Look for Android paths
-        for file_info in files[:50]:
-            filename = file_info.filename.lower()
+                return ("graykey_ios", "")
+            # Android indicators
             if (
                 filename.startswith('data/data/')
                 or filename.startswith('system/build.prop')
                 or filename.startswith('system/app/')
             ):
                 self.log_info("Detected format: GrayKey/Raw Android filesystem (no prefix)")
-                return ("graykey", "")
+                return ("graykey_android", "")
 
         self.log_warning("Could not detect extraction format, using raw access")
         return ("unknown", "")
