@@ -173,7 +173,7 @@ def test_detect_zip_structure_cellebrite(plugin, core_api, mock_android_zip_cell
     core_api.set_zip_file(mock_android_zip_cellebrite)
     plugin._detect_zip_structure()
 
-    assert plugin.extraction_type == "cellebrite"
+    assert plugin.extraction_type == "cellebrite_android"
     assert plugin.zip_prefix == "fs/"
 
 
@@ -182,7 +182,7 @@ def test_detect_zip_structure_graykey(plugin, core_api, mock_android_zip_graykey
     core_api.set_zip_file(mock_android_zip_graykey)
     plugin._detect_zip_structure()
 
-    assert plugin.extraction_type == "graykey"
+    assert plugin.extraction_type == "graykey_android"
     assert plugin.zip_prefix == ""
 
 

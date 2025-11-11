@@ -416,6 +416,147 @@ def test_query_sqlite_from_zip_db_not_found(core_api, temp_dir):
         core_api.query_sqlite_from_zip("nonexistent.db", "SELECT * FROM table")
 
 
+# ========== Format Detection Tests ==========
+
+
+def test_detect_zip_format_cellebrite_ios_filesystem1(core_api, temp_dir):
+    """Test detection of Cellebrite iOS format with filesystem1/ prefix."""
+    zip_path = temp_dir / "cellebrite_ios.zip"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr("filesystem1/System/Library/CoreServices/SystemVersion.plist", "content")
+        zf.writestr("filesystem1/private/var/mobile/Library/SMS/sms.db", "content")
+
+    core_api.set_zip_file(zip_path)
+    format_type, prefix = core_api.detect_zip_format()
+
+    assert format_type == "cellebrite_ios"
+    assert prefix == "filesystem1/"
+
+
+def test_detect_zip_format_cellebrite_ios_filesystem(core_api, temp_dir):
+    """Test detection of Cellebrite iOS format with filesystem/ prefix."""
+    zip_path = temp_dir / "cellebrite_ios.zip"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr("filesystem/System/Library/CoreServices/SystemVersion.plist", "content")
+        zf.writestr("filesystem/private/var/mobile/Library/SMS/sms.db", "content")
+
+    core_api.set_zip_file(zip_path)
+    format_type, prefix = core_api.detect_zip_format()
+
+    assert format_type == "cellebrite_ios"
+    assert prefix == "filesystem/"
+
+
+def test_detect_zip_format_cellebrite_android_dump(core_api, temp_dir):
+    """Test detection of Cellebrite Android format with Dump/ and extra/ folders."""
+    zip_path = temp_dir / "cellebrite_android.zip"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr("Dump/data/data/com.example.app/databases/app.db", "content")
+        zf.writestr("Dump/system/build.prop", "content")
+        zf.writestr("extra/metadata.xml", "content")
+
+    core_api.set_zip_file(zip_path)
+    format_type, prefix = core_api.detect_zip_format()
+
+    assert format_type == "cellebrite_android"
+    assert prefix == "Dump/"
+
+
+def test_detect_zip_format_cellebrite_android_legacy_fs(core_api, temp_dir):
+    """Test detection of legacy Cellebrite Android format with fs/ prefix."""
+    zip_path = temp_dir / "cellebrite_android_legacy.zip"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr("fs/data/data/com.example.app/databases/app.db", "content")
+        zf.writestr("fs/system/build.prop", "content")
+
+    core_api.set_zip_file(zip_path)
+    format_type, prefix = core_api.detect_zip_format()
+
+    assert format_type == "cellebrite_android"
+    assert prefix == "fs/"
+
+
+def test_detect_zip_format_graykey_android(core_api, temp_dir):
+    """Test detection of GrayKey Android format with characteristic root folders."""
+    zip_path = temp_dir / "graykey_android.zip"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        # Create characteristic GrayKey Android folders
+        zf.writestr("apex/file1.txt", "content")
+        zf.writestr("bootstrap-apex/file2.txt", "content")
+        zf.writestr("cache/file3.txt", "content")
+        zf.writestr("data/data/com.example.app/databases/app.db", "content")
+        zf.writestr("data-mirror/file5.txt", "content")
+        zf.writestr("efs/file6.txt", "content")
+        zf.writestr("system/build.prop", "content")
+
+    core_api.set_zip_file(zip_path)
+    format_type, prefix = core_api.detect_zip_format()
+
+    assert format_type == "graykey_android"
+    assert prefix == ""
+
+
+def test_detect_zip_format_graykey_ios(core_api, temp_dir):
+    """Test detection of GrayKey iOS format with characteristic root folders."""
+    zip_path = temp_dir / "graykey_ios.zip"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        # Create characteristic GrayKey iOS folders
+        zf.writestr("private/var/mobile/Library/SMS/sms.db", "content")
+        zf.writestr("System/Library/CoreServices/SystemVersion.plist", "content")
+        zf.writestr("Library/Preferences/com.apple.preferences.plist", "content")
+
+    core_api.set_zip_file(zip_path)
+    format_type, prefix = core_api.detect_zip_format()
+
+    assert format_type == "graykey_ios"
+    assert prefix == ""
+
+
+def test_detect_zip_format_unknown(core_api, temp_dir):
+    """Test detection returns unknown for unrecognized formats."""
+    zip_path = temp_dir / "unknown.zip"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr("random/folder/file.txt", "content")
+        zf.writestr("another/file.txt", "content")
+
+    core_api.set_zip_file(zip_path)
+    format_type, prefix = core_api.detect_zip_format()
+
+    assert format_type == "unknown"
+    assert prefix == ""
+
+
+def test_detect_zip_format_no_zip_loaded(core_api):
+    """Test format detection raises error when no ZIP is loaded."""
+    with pytest.raises(RuntimeError, match="No ZIP file loaded"):
+        core_api.detect_zip_format()
+
+
+def test_normalize_zip_path_with_prefix(core_api):
+    """Test normalizing ZIP path with prefix."""
+    path = "data/data/com.example/databases/app.db"
+    prefix = "Dump/"
+
+    normalized = core_api.normalize_zip_path(path, prefix)
+    assert normalized == "Dump/data/data/com.example/databases/app.db"
+
+
+def test_normalize_zip_path_without_prefix(core_api):
+    """Test normalizing ZIP path without prefix."""
+    path = "data/data/com.example/databases/app.db"
+    prefix = ""
+
+    normalized = core_api.normalize_zip_path(path, prefix)
+    assert normalized == "data/data/com.example/databases/app.db"
+
+
 # ========== Case Identifier Tests ==========
 
 
