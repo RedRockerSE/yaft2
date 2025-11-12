@@ -133,7 +133,7 @@ def run(
     plugin_name: Annotated[
         str | None,
         typer.Argument(
-            help="Name of the plugin to run (optional if using --plugins, --all, or --os)"
+            help="Name of the plugin to run (optional if using --plugins, --all, --os, or --profile)"
         ),
     ] = None,
     zip_file: Annotated[
@@ -142,6 +142,10 @@ def run(
     plugins: Annotated[
         str | None,
         typer.Option("--plugins", "-p", help="Comma-separated list of plugin names to run"),
+    ] = None,
+    profile: Annotated[
+        Path | None,
+        typer.Option("--profile", help="Path to TOML profile file specifying plugins to run"),
     ] = None,
     run_all: Annotated[
         bool,
@@ -164,6 +168,9 @@ def run(
         yaft run --zip evidence.zip --plugins \\
             iOSAppGUIDExtractorPlugin,iOSAppPermissionsExtractorPlugin
 
+        # Run plugins from profile file
+        yaft run --zip evidence.zip --profile ios_analysis.toml
+
         # Run all compatible plugins (auto-detects OS from ZIP)
         yaft run --zip evidence.zip --all
 
@@ -174,12 +181,12 @@ def run(
     plugin_manager = get_plugin_manager()
 
     # Validate arguments
-    mode_count = sum([bool(plugin_name), bool(plugins), run_all, bool(os_filter)])
+    mode_count = sum([bool(plugin_name), bool(plugins), bool(profile), run_all, bool(os_filter)])
     if mode_count == 0:
-        core_api.print_error("Must specify plugin_name, --plugins, --all, or --os")
+        core_api.print_error("Must specify plugin_name, --plugins, --profile, --all, or --os")
         raise typer.Exit(code=1)
     if mode_count > 1:
-        core_api.print_error("Cannot combine plugin_name, --plugins, --all, and --os options")
+        core_api.print_error("Cannot combine plugin_name, --plugins, --profile, --all, and --os options")
         raise typer.Exit(code=1)
 
     # Prompt for case identifiers
@@ -217,6 +224,7 @@ def run(
 
     # Determine which plugins to run
     plugins_to_run = []
+    profile_name = None
 
     if plugin_name:
         # Single plugin mode
@@ -224,6 +232,25 @@ def run(
     elif plugins:
         # Multiple specific plugins mode
         plugins_to_run = [p.strip() for p in plugins.split(",")]
+    elif profile:
+        # Profile mode - load plugins from TOML file
+        try:
+            plugin_profile = core_api.load_plugin_profile(profile)
+            plugins_to_run = plugin_profile.plugins
+            profile_name = plugin_profile.name
+            core_api.print_success(f"Loaded profile '{profile_name}'")
+            if plugin_profile.description:
+                core_api.print_info(f"Description: {plugin_profile.description}")
+            core_api.print_info(f"Running {len(plugins_to_run)} plugins from profile")
+        except FileNotFoundError as e:
+            core_api.print_error(str(e))
+            raise typer.Exit(code=1) from e
+        except ValueError as e:
+            core_api.print_error(f"Invalid profile: {e}")
+            raise typer.Exit(code=1) from e
+        except Exception as e:
+            core_api.print_error(f"Failed to load profile: {e}")
+            raise typer.Exit(code=1) from e
     elif run_all:
         # Run all compatible plugins
         if zip_file:
