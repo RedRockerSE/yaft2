@@ -3,7 +3,7 @@ YAFT - Yet Another Forensic Tool
 A plugin-based forensic analysis tool for processing ZIP archives.
 """
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 __author__ = "magjon@gmail.com (RedRockerSE)"
 
 from yaft.core.api import CoreAPI
