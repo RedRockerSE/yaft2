@@ -8,11 +8,13 @@ import logging
 import plistlib
 import sqlite3
 import tempfile
+import toml
 import zipfile
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, Field, field_validator
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
@@ -24,6 +26,25 @@ class ExtractionOS(str, Enum):
     UNKNOWN = "unknown"
     IOS = "ios"
     ANDROID = "android"
+
+
+class PluginProfile(BaseModel):
+    """Plugin profile configuration model."""
+
+    name: str = Field(..., description="Profile name")
+    description: str | None = Field(None, description="Profile description")
+    plugins: list[str] = Field(..., min_length=1, description="List of plugin class names to run")
+
+    @field_validator("plugins")
+    @classmethod
+    def validate_plugins(cls, v: list[str]) -> list[str]:
+        """Validate that plugins list is not empty and contains valid names."""
+        if not v:
+            raise ValueError("plugins list cannot be empty")
+        for plugin_name in v:
+            if not plugin_name or not plugin_name.strip():
+                raise ValueError("plugin names cannot be empty")
+        return v
 
 
 class CoreAPI:
@@ -1325,3 +1346,45 @@ class CoreAPI:
         except Exception as e:
             self.log_error(f"Failed to save attachment {filename}: {e}")
             raise
+
+    def load_plugin_profile(self, profile_path: Path) -> PluginProfile:
+        """
+        Load and parse a plugin profile from a TOML file.
+
+        Args:
+            profile_path: Path to the TOML profile file
+
+        Returns:
+            PluginProfile: Parsed and validated profile
+
+        Raises:
+            FileNotFoundError: If profile file does not exist
+            ValueError: If profile is invalid or cannot be parsed
+        """
+        if not profile_path.exists():
+            raise FileNotFoundError(f"Profile file not found: {profile_path}")
+
+        if not profile_path.is_file():
+            raise ValueError(f"Profile path is not a file: {profile_path}")
+
+        try:
+            # Read and parse TOML file
+            with open(profile_path, "r", encoding="utf-8") as f:
+                profile_data = toml.load(f)
+
+            # Validate required 'profile' section
+            if "profile" not in profile_data:
+                raise ValueError("Profile file must contain a [profile] section")
+
+            profile_config = profile_data["profile"]
+
+            # Create and validate PluginProfile
+            profile = PluginProfile(**profile_config)
+
+            self.log_info(f"Loaded profile '{profile.name}' with {len(profile.plugins)} plugins")
+            return profile
+
+        except toml.TomlDecodeError as e:
+            raise ValueError(f"Invalid TOML syntax in profile file: {e}") from e
+        except Exception as e:
+            raise ValueError(f"Failed to parse profile file: {e}") from e

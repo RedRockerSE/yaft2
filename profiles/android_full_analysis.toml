@@ -1,0 +1,14 @@
+# Android Full Analysis Profile
+# Comprehensive analysis for Android device extractions
+# Runs all Android-related forensic plugins
+
+[profile]
+name = "Android Full Analysis"
+description = "Complete forensic analysis for Android device extractions including device info, apps, permissions, and call logs"
+
+plugins = [
+    "AndroidDeviceInfoExtractorPlugin",
+    "AndroidAppInfoExtractorPlugin",
+    "AndroidAppPermissionsExtractorPlugin",
+    "AndroidCallLogAnalyzerPlugin",
+]

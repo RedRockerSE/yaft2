@@ -1,0 +1,11 @@
+# iOS Device Info Only Profile
+# Quick analysis focused on device information extraction
+# Useful for initial device identification
+
+[profile]
+name = "iOS Device Info Only"
+description = "Extract only device information from iOS extractions"
+
+plugins = [
+    "iOSDeviceInfoExtractorPlugin",
+]

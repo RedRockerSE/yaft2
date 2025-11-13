@@ -1,0 +1,12 @@
+# Android Apps Analysis Profile
+# Focus on application metadata and permissions
+# Useful for investigating installed applications and their security posture
+
+[profile]
+name = "Android Apps Analysis"
+description = "Analyze Android applications, their metadata, and permissions"
+
+plugins = [
+    "AndroidAppInfoExtractorPlugin",
+    "AndroidAppPermissionsExtractorPlugin",
+]

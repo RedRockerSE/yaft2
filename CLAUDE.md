@@ -381,6 +381,10 @@ python -m yaft.cli list-plugins
 python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip
 python -m yaft.cli run AndroidCallLogAnalyzerPlugin --zip android_extraction.zip
 
+# Run multiple plugins using a profile
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml
+python -m yaft.cli run --zip android.zip --profile profiles/android_full_analysis.toml
+
 # Run tests
 pytest
 
@@ -413,6 +417,92 @@ python build_exe.py
 
 # Install/update a single package with uv
 uv pip install package-name
+```
+
+## Plugin Profiles
+
+YaFT supports plugin profiles - TOML configuration files that specify a set of plugins to run together. This makes it easy to perform standard analysis workflows without manually listing plugins each time.
+
+### Profile Format
+
+Plugin profiles are TOML files with the following structure:
+
+```toml
+[profile]
+name = "Profile Name"
+description = "Optional description of what this profile does"
+
+plugins = [
+    "PluginClassName1",
+    "PluginClassName2",
+    "PluginClassName3",
+]
+```
+
+### Using Profiles
+
+Run a profile using the `--profile` option:
+
+```bash
+# Run iOS full analysis profile
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml
+
+# Run Android apps analysis profile
+python -m yaft.cli run --zip android.zip --profile profiles/android_apps_analysis.toml
+```
+
+### Built-in Profiles
+
+YaFT includes several pre-configured profiles in the `profiles/` directory:
+
+**iOS Profiles:**
+- `ios_full_analysis.toml` - Complete iOS forensic analysis (device info, apps, permissions, call logs)
+- `ios_device_only.toml` - Quick device information extraction
+
+**Android Profiles:**
+- `android_full_analysis.toml` - Complete Android forensic analysis (device info, apps, permissions, call logs)
+- `android_apps_analysis.toml` - Application-focused analysis (metadata and permissions)
+
+### Creating Custom Profiles
+
+1. Create a new `.toml` file in the `profiles/` directory (or any location)
+2. Use the profile format shown above
+3. List plugin class names in the `plugins` array (exact class names required)
+4. Plugins execute in the order listed
+
+**Example:**
+
+```toml
+[profile]
+name = "Custom iOS Analysis"
+description = "Custom workflow for iOS device analysis"
+
+plugins = [
+    "iOSDeviceInfoExtractorPlugin",
+    "iOSCallLogAnalyzerPlugin",
+]
+```
+
+### Profile Validation
+
+The Core API validates profiles to ensure:
+- Required fields are present (`name` and `plugins`)
+- Plugin list is not empty
+- Plugin names are not empty or whitespace-only
+- TOML syntax is valid
+
+Invalid profiles will fail with a clear error message before execution.
+
+### Core API Methods
+
+```python
+# Load and validate a profile (in plugins or custom code)
+profile = self.core_api.load_plugin_profile(Path("profiles/my_profile.toml"))
+
+# Access profile properties
+profile.name          # str: Profile name
+profile.description   # str | None: Profile description
+profile.plugins       # list[str]: List of plugin class names
 ```
 
 ## Plugin Development
