@@ -670,3 +670,180 @@ def test_get_case_output_dir_without_identifiers(core_api):
 
     reports_dir = core_api.get_case_output_dir("reports")
     assert reports_dir.parts[-2:] == ("yaft_output", "reports")
+
+
+# ========== PDF Export Tests ==========
+
+
+def test_enable_pdf_export(core_api):
+    """Test enabling and disabling PDF export."""
+    # Initially disabled
+    assert core_api.is_pdf_export_enabled() is False
+
+    # Enable
+    core_api.enable_pdf_export(True)
+    assert core_api.is_pdf_export_enabled() is True
+
+    # Disable
+    core_api.enable_pdf_export(False)
+    assert core_api.is_pdf_export_enabled() is False
+
+
+def test_generated_reports_tracking(core_api, temp_dir):
+    """Test tracking of generated reports."""
+    # Initially empty
+    assert core_api.get_generated_reports() == []
+
+    # Generate some reports
+    sections = [{"heading": "Test", "content": "Test content"}]
+
+    report1 = core_api.generate_report("TestPlugin1", "Report 1", sections)
+    assert len(core_api.get_generated_reports()) == 1
+    assert core_api.get_generated_reports()[0] == report1
+
+    report2 = core_api.generate_report("TestPlugin2", "Report 2", sections)
+    assert len(core_api.get_generated_reports()) == 2
+
+    # Clear
+    core_api.clear_generated_reports()
+    assert core_api.get_generated_reports() == []
+
+
+def test_convert_markdown_to_pdf(core_api, temp_dir):
+    """Test converting markdown to PDF."""
+    pytest.importorskip("markdown")
+    pytest.importorskip("weasyprint")
+
+    # Create a markdown file
+    md_path = temp_dir / "test_report.md"
+    md_content = """# Test Report
+
+## Section 1
+
+This is a test report.
+
+## Section 2
+
+- Item 1
+- Item 2
+- Item 3
+
+| Column 1 | Column 2 |
+|----------|----------|
+| Value 1  | Value 2  |
+"""
+    md_path.write_text(md_content, encoding='utf-8')
+
+    # Convert to PDF
+    pdf_path = core_api.convert_markdown_to_pdf(md_path)
+
+    assert pdf_path.exists()
+    assert pdf_path.suffix == '.pdf'
+    assert pdf_path.stem == md_path.stem
+
+    # Check PDF has content (basic check)
+    pdf_size = pdf_path.stat().st_size
+    assert pdf_size > 100  # PDF should have some content
+
+
+def test_convert_markdown_to_pdf_custom_output(core_api, temp_dir):
+    """Test converting markdown to PDF with custom output path."""
+    pytest.importorskip("markdown")
+    pytest.importorskip("weasyprint")
+
+    md_path = temp_dir / "report.md"
+    md_path.write_text("# Test\n\nContent", encoding='utf-8')
+
+    custom_pdf = temp_dir / "custom_output.pdf"
+    result_path = core_api.convert_markdown_to_pdf(md_path, custom_pdf)
+
+    assert result_path == custom_pdf
+    assert custom_pdf.exists()
+
+
+def test_convert_markdown_to_pdf_file_not_found(core_api, temp_dir):
+    """Test PDF conversion with nonexistent markdown file."""
+    pytest.importorskip("markdown")
+    pytest.importorskip("weasyprint")
+
+    md_path = temp_dir / "nonexistent.md"
+
+    with pytest.raises(FileNotFoundError):
+        core_api.convert_markdown_to_pdf(md_path)
+
+
+def test_generate_report_with_pdf_export(core_api, temp_dir):
+    """Test generating report with PDF export enabled."""
+    pytest.importorskip("markdown")
+    pytest.importorskip("weasyprint")
+
+    # Set case identifiers for proper path structure
+    core_api.set_case_identifiers("examiner01", "CASE2024-01", "EV123")
+
+    # Enable PDF export
+    core_api.enable_pdf_export(True)
+
+    sections = [
+        {"heading": "Summary", "content": "Test summary"},
+        {"heading": "Details", "content": ["Detail 1", "Detail 2"], "style": "list"},
+    ]
+
+    md_path = core_api.generate_report("TestPlugin", "Test Report", sections)
+
+    # Check markdown report exists
+    assert md_path.exists()
+
+    # Check PDF was generated
+    pdf_path = md_path.with_suffix('.pdf')
+    assert pdf_path.exists()
+
+    # Cleanup
+    core_api.enable_pdf_export(False)
+
+
+def test_export_all_reports_to_pdf(core_api, temp_dir):
+    """Test batch export of all reports to PDF."""
+    pytest.importorskip("markdown")
+    pytest.importorskip("weasyprint")
+
+    # Generate multiple reports
+    sections = [{"heading": "Test", "content": "Content"}]
+
+    core_api.generate_report("Plugin1", "Report 1", sections)
+    core_api.generate_report("Plugin2", "Report 2", sections)
+    core_api.generate_report("Plugin3", "Report 3", sections)
+
+    # Export all to PDF
+    pdf_paths = core_api.export_all_reports_to_pdf()
+
+    assert len(pdf_paths) == 3
+    for pdf_path in pdf_paths:
+        assert pdf_path.exists()
+        assert pdf_path.suffix == '.pdf'
+
+
+def test_export_all_reports_to_pdf_empty(core_api):
+    """Test exporting when no reports have been generated."""
+    pdf_paths = core_api.export_all_reports_to_pdf()
+    assert pdf_paths == []
+
+
+def test_export_all_reports_to_pdf_with_missing_file(core_api, temp_dir):
+    """Test exporting reports when some markdown files are missing."""
+    pytest.importorskip("markdown")
+    pytest.importorskip("weasyprint")
+
+    # Generate a report
+    sections = [{"heading": "Test", "content": "Content"}]
+    md_path = core_api.generate_report("Plugin1", "Report 1", sections)
+
+    # Manually add a nonexistent path to the reports list
+    fake_path = temp_dir / "nonexistent.md"
+    core_api._generated_reports.append(fake_path)
+
+    # Should handle missing file gracefully
+    pdf_paths = core_api.export_all_reports_to_pdf()
+
+    # Only the real report should be converted
+    assert len(pdf_paths) == 1
+    assert pdf_paths[0].exists()

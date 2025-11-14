@@ -154,6 +154,10 @@ def run(
     os_filter: Annotated[
         str | None, typer.Option("--os", help="Run plugins for specific OS (ios/android)")
     ] = None,
+    pdf_export: Annotated[
+        bool,
+        typer.Option("--pdf", help="Export all generated markdown reports to PDF format"),
+    ] = False,
     args: Annotated[
         list[str] | None, typer.Argument(help="Arguments to pass to the plugin(s)")
     ] = None,
@@ -176,6 +180,9 @@ def run(
 
         # Run all iOS plugins
         yaft run --zip evidence.zip --os ios
+
+        # Run with PDF export enabled
+        yaft run --zip evidence.zip --profile ios_full_analysis.toml --pdf
     """
     core_api = get_core_api()
     plugin_manager = get_plugin_manager()
@@ -198,6 +205,10 @@ def run(
     except Exception as e:
         core_api.print_error(f"Failed to get case identifiers: {e}")
         raise typer.Exit(code=1) from e
+
+    # Enable PDF export if requested
+    if pdf_export:
+        core_api.enable_pdf_export(True)
 
     # Load ZIP file if provided
     if zip_file:
@@ -320,6 +331,24 @@ def run(
         console.print(f"  Total: {len(plugins_to_run)}")
         console.print(f"  [green]Success: {success_count}[/green]")
         console.print(f"  [red]Failed: {failed_count}[/red]")
+
+    # Export all reports to PDF if not already done (when --pdf flag is used)
+    # Note: Individual PDFs are created automatically during report generation if PDF export is enabled
+    # This is a fallback for batch conversion or if you want to ensure all reports are exported
+    if pdf_export and not core_api.is_pdf_export_enabled():
+        # Manual batch export (only if automatic export wasn't enabled)
+        try:
+            console.print("\n[bold cyan]Exporting reports to PDF...[/bold cyan]")
+            pdf_paths = core_api.export_all_reports_to_pdf()
+            if pdf_paths:
+                core_api.print_success(f"Exported {len(pdf_paths)} reports to PDF")
+        except ImportError:
+            core_api.print_error(
+                "PDF export requires 'markdown' and 'weasyprint' packages. "
+                "Install with: uv pip install markdown weasyprint"
+            )
+        except Exception as e:
+            core_api.print_error(f"PDF export failed: {e}")
 
     # Close ZIP file if it was opened
     if zip_file:

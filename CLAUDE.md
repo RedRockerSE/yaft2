@@ -18,6 +18,7 @@ YaFT includes production-ready forensic analysis plugins for both iOS and Androi
 - **Build System**: PyInstaller (Windows and Linux executables)
 - **Testing**: pytest with coverage
 - **Code Quality**: Ruff (linting and formatting)
+- **PDF Generation**: Markdown + WeasyPrint (markdown to PDF conversion)
 
 ## Core Architecture
 
@@ -291,6 +292,68 @@ report_path = self.core_api.generate_report(
 - **Multiple Content Styles**: text, list, table, code blocks
 - **Timestamped Filenames**: Reports won't overwrite each other
 - **Standard Location**: `yaft_output/<case_id>/<evidence_id>/reports/PluginName_YYYYMMDD_HHMMSS.md`
+- **PDF Export**: Automatically export reports to PDF format with professional styling
+
+### PDF Export
+
+YaFT supports automatic PDF export of markdown reports with professional formatting. PDFs are generated with proper styling including tables, code blocks, headings, and lists.
+
+**Dependencies:**
+```bash
+# PDF export requires additional packages
+uv pip install markdown weasyprint
+```
+
+**Windows Installation:**
+WeasyPrint requires GTK libraries on Windows. Install GTK3 Runtime:
+1. Download GTK3 Runtime from: https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases
+2. Run the installer (gtk3-runtime-x.x.x-x64-en.exe)
+3. Add GTK `bin` directory to PATH: `C:\Program Files\GTK3-Runtime Win64\bin`
+4. Restart terminal and install packages: `uv pip install markdown weasyprint`
+
+**Linux/macOS:**
+```bash
+# Linux (Debian/Ubuntu)
+sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev
+
+# macOS (with Homebrew)
+brew install pango gdk-pixbuf libffi
+```
+
+**CLI Usage:**
+```bash
+# Enable PDF export for a single plugin
+python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip --pdf
+
+# Enable PDF export for profile execution
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml --pdf
+```
+
+**Programmatic Usage:**
+```python
+# Enable automatic PDF generation
+self.core_api.enable_pdf_export(True)
+
+# Generate report (PDF created automatically if enabled)
+report_path = self.core_api.generate_report(
+    plugin_name="MyPlugin",
+    title="Analysis Report",
+    sections=sections,
+)
+
+# Manually convert a markdown file to PDF
+pdf_path = self.core_api.convert_markdown_to_pdf(markdown_path)
+
+# Batch export all generated reports to PDF
+pdf_paths = self.core_api.export_all_reports_to_pdf()
+```
+
+**Features:**
+- **Professional Styling**: Blue color scheme, proper typography, A4 page format
+- **Full Markdown Support**: Tables, code blocks, lists, headings, emphasis
+- **Automatic Generation**: PDFs created alongside markdown when `--pdf` flag is used
+- **Batch Conversion**: Convert all reports from a session with `export_all_reports_to_pdf()`
+- **Graceful Degradation**: Falls back to markdown-only if PDF packages aren't installed
 
 ## Forensic Analysis Plugins
 
@@ -384,6 +447,9 @@ python -m yaft.cli run AndroidCallLogAnalyzerPlugin --zip android_extraction.zip
 # Run multiple plugins using a profile
 python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml
 python -m yaft.cli run --zip android.zip --profile profiles/android_full_analysis.toml
+
+# Run with PDF export enabled (generates both markdown and PDF reports)
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml --pdf
 
 # Run tests
 pytest

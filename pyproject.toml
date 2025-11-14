@@ -26,6 +26,8 @@ dependencies = [
     "pydantic>=2.6.0",
     "pydantic-settings>=2.1.0",
     "toml>=0.10.2",
+    "markdown>=3.5.0",
+    "weasyprint>=60.0",
 ]
 
 [project.optional-dependencies]
