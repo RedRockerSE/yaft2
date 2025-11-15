@@ -73,6 +73,7 @@ nul
 
 # Claude files (local development only)
 .claude/
+CLAUDE.md
 
 # Research files
 research/
