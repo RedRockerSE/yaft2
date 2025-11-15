@@ -1,0 +1,5 @@
+# PDF export dependencies (optional)
+# These require system libraries (GTK on Windows, Pango on Linux/macOS)
+# See CLAUDE.md for installation instructions
+markdown>=3.5.0
+weasyprint>=60.0

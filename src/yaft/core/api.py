@@ -89,6 +89,10 @@ class CoreAPI:
         self._case_id: str | None = None
         self._evidence_id: str | None = None
 
+        # PDF export configuration
+        self._enable_pdf_export: bool = False
+        self._generated_reports: list[Path] = []  # Track reports for batch PDF export
+
     def _setup_logging(self) -> None:
         """Configure logging with Rich handler."""
         logging.basicConfig(
@@ -345,6 +349,41 @@ class CoreAPI:
             if subdir:
                 return base_dir / subdir
             return base_dir
+
+    def enable_pdf_export(self, enabled: bool = True) -> None:
+        """
+        Enable or disable automatic PDF export for generated reports.
+
+        When enabled, all markdown reports will also be exported as PDF files.
+
+        Args:
+            enabled: True to enable PDF export, False to disable
+        """
+        self._enable_pdf_export = enabled
+        if enabled:
+            self.log_info("PDF export enabled for reports")
+
+    def is_pdf_export_enabled(self) -> bool:
+        """
+        Check if PDF export is enabled.
+
+        Returns:
+            bool: True if PDF export is enabled
+        """
+        return self._enable_pdf_export
+
+    def get_generated_reports(self) -> list[Path]:
+        """
+        Get list of markdown reports generated during current session.
+
+        Returns:
+            list[Path]: List of paths to generated markdown reports
+        """
+        return self._generated_reports.copy()
+
+    def clear_generated_reports(self) -> None:
+        """Clear the list of generated reports."""
+        self._generated_reports.clear()
 
     def read_file(self, filepath: Path) -> str:
         """
@@ -1141,6 +1180,170 @@ class CoreAPI:
 
     # ========== Report Generation Methods ==========
 
+    def convert_markdown_to_pdf(self, markdown_path: Path, pdf_path: Path | None = None) -> Path:
+        """
+        Convert a markdown file to PDF format.
+
+        Args:
+            markdown_path: Path to the markdown file
+            pdf_path: Optional path for the PDF output (defaults to same name with .pdf extension)
+
+        Returns:
+            Path: Path to generated PDF file
+
+        Raises:
+            ImportError: If weasyprint is not installed
+            FileNotFoundError: If markdown file doesn't exist
+            Exception: If PDF conversion fails
+        """
+        try:
+            import markdown
+            from weasyprint import HTML
+        except ImportError as e:
+            error_msg = (
+                "PDF export requires 'markdown' and 'weasyprint' packages. "
+                "Install with: uv pip install markdown weasyprint"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        if not markdown_path.exists():
+            raise FileNotFoundError(f"Markdown file not found: {markdown_path}")
+
+        # Default PDF path
+        if pdf_path is None:
+            pdf_path = markdown_path.with_suffix('.pdf')
+
+        try:
+            # Read markdown content
+            md_content = markdown_path.read_text(encoding='utf-8')
+
+            # Convert markdown to HTML with extensions for better formatting
+            html_content = markdown.markdown(
+                md_content,
+                extensions=['tables', 'fenced_code', 'nl2br']
+            )
+
+            # Add CSS styling for better PDF formatting
+            css_style = """
+            <style>
+                @page {
+                    size: A4;
+                    margin: 2cm;
+                }
+                body {
+                    font-family: 'Segoe UI', Arial, sans-serif;
+                    font-size: 11pt;
+                    line-height: 1.6;
+                    color: #333;
+                }
+                h1 {
+                    font-size: 24pt;
+                    color: #2c3e50;
+                    border-bottom: 3px solid #3498db;
+                    padding-bottom: 10px;
+                    margin-top: 20px;
+                    margin-bottom: 20px;
+                }
+                h2 {
+                    font-size: 18pt;
+                    color: #34495e;
+                    border-bottom: 2px solid #bdc3c7;
+                    padding-bottom: 8px;
+                    margin-top: 18px;
+                    margin-bottom: 12px;
+                }
+                h3 {
+                    font-size: 14pt;
+                    color: #34495e;
+                    margin-top: 14px;
+                    margin-bottom: 10px;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 15px 0;
+                    font-size: 10pt;
+                }
+                th {
+                    background-color: #3498db;
+                    color: white;
+                    font-weight: bold;
+                    padding: 10px;
+                    text-align: left;
+                    border: 1px solid #2980b9;
+                }
+                td {
+                    padding: 8px;
+                    border: 1px solid #bdc3c7;
+                }
+                tr:nth-child(even) {
+                    background-color: #ecf0f1;
+                }
+                code {
+                    background-color: #f4f4f4;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-family: 'Courier New', monospace;
+                    font-size: 9pt;
+                }
+                pre {
+                    background-color: #2c3e50;
+                    color: #ecf0f1;
+                    padding: 15px;
+                    border-radius: 5px;
+                    overflow-x: auto;
+                    font-family: 'Courier New', monospace;
+                    font-size: 9pt;
+                    line-height: 1.4;
+                }
+                pre code {
+                    background-color: transparent;
+                    color: inherit;
+                    padding: 0;
+                }
+                ul, ol {
+                    margin: 10px 0;
+                    padding-left: 30px;
+                }
+                li {
+                    margin: 5px 0;
+                }
+                hr {
+                    border: none;
+                    border-top: 2px solid #bdc3c7;
+                    margin: 20px 0;
+                }
+                strong {
+                    color: #2c3e50;
+                }
+            </style>
+            """
+
+            # Combine CSS and HTML
+            full_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                {css_style}
+            </head>
+            <body>
+                {html_content}
+            </body>
+            </html>
+            """
+
+            # Convert HTML to PDF
+            HTML(string=full_html).write_pdf(pdf_path)
+
+            self.log_info(f"PDF generated: {pdf_path}")
+            return pdf_path
+
+        except Exception as e:
+            self.log_error(f"Failed to convert markdown to PDF: {e}")
+            raise
+
     def generate_report(
         self,
         plugin_name: str,
@@ -1308,6 +1511,23 @@ class CoreAPI:
         self.write_file(report_path, report_content)
 
         self.log_info(f"Report generated: {report_path}")
+
+        # Track generated report
+        self._generated_reports.append(report_path)
+
+        # Generate PDF if enabled
+        if self._enable_pdf_export:
+            try:
+                pdf_path = self.convert_markdown_to_pdf(report_path)
+                self.log_info(f"PDF export: {pdf_path}")
+            except ImportError:
+                self.log_warning(
+                    "PDF export is enabled but required packages are not installed. "
+                    "Install with: uv pip install markdown weasyprint"
+                )
+            except Exception as e:
+                self.log_warning(f"Failed to generate PDF: {e}")
+
         return report_path
 
     def save_report_attachment(
@@ -1346,6 +1566,54 @@ class CoreAPI:
         except Exception as e:
             self.log_error(f"Failed to save attachment {filename}: {e}")
             raise
+
+    def export_all_reports_to_pdf(self) -> list[Path]:
+        """
+        Export all generated markdown reports from the current session to PDF format.
+
+        This method processes all reports tracked during the current session and
+        generates corresponding PDF files. Useful for batch conversion at the end
+        of a forensic analysis workflow.
+
+        Returns:
+            list[Path]: List of paths to generated PDF files
+
+        Raises:
+            ImportError: If weasyprint is not installed
+        """
+        if not self._generated_reports:
+            self.log_info("No reports to export to PDF")
+            return []
+
+        self.log_info(f"Exporting {len(self._generated_reports)} reports to PDF...")
+
+        pdf_paths: list[Path] = []
+        success_count = 0
+        failed_count = 0
+
+        for md_path in self._generated_reports:
+            if not md_path.exists():
+                self.log_warning(f"Markdown file not found, skipping: {md_path}")
+                failed_count += 1
+                continue
+
+            try:
+                pdf_path = self.convert_markdown_to_pdf(md_path)
+                pdf_paths.append(pdf_path)
+                success_count += 1
+            except ImportError as e:
+                # Re-raise ImportError since user needs to install dependencies
+                raise
+            except Exception as e:
+                self.log_error(f"Failed to export {md_path.name} to PDF: {e}")
+                failed_count += 1
+
+        # Summary
+        self.log_info(
+            f"PDF export complete: {success_count} successful, {failed_count} failed"
+        )
+
+        return pdf_paths
 
     def load_plugin_profile(self, profile_path: Path) -> PluginProfile:
         """
