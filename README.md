@@ -622,6 +622,29 @@ python -m yaft.cli
 make run
 ```
 
+## Developer Tools
+
+### Plugin Profile Editor (GUI)
+
+A standalone GUI application for visually creating and editing plugin profiles. No need to manually edit TOML files!
+
+**Features:**
+- Visual plugin selection with descriptions
+- Drag-and-drop plugin ordering
+- Create, load, save, and edit profiles
+- Automatic plugin discovery
+
+**Launch:**
+```bash
+# Windows
+tools\profile_editor\launch_editor.bat
+
+# Linux/macOS
+./tools/profile_editor/launch_editor.sh
+```
+
+**Documentation:** See [tools/profile_editor/README.md](tools/profile_editor/README.md) for detailed instructions and [QUICKSTART.md](tools/profile_editor/QUICKSTART.md) for a quick guide.
+
 ## Technology Stack Decisions
 
 ### Why These Tools?
