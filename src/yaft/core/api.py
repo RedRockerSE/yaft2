@@ -748,6 +748,131 @@ class CoreAPI:
         self.log_info(f"Extracted all files to: {output_dir}")
         return output_dir
 
+    def find_files_in_zip(
+        self,
+        pattern: str,
+        *,
+        case_sensitive: bool = False,
+        search_path: str | None = None,
+        max_results: int | None = None
+    ) -> list[str]:
+        """
+        Find files in the ZIP archive matching the given pattern.
+
+        Supports glob-style wildcard patterns for flexible file searching:
+        - Exact filename: "file.txt" - matches only "file.txt"
+        - Wildcard extension: "file.*" - matches "file.txt", "file.db", etc.
+        - Wildcard name: "*.txt" - matches all .txt files
+        - Multiple wildcards: "*log*.txt" - matches "error_log_2024.txt", "system.log.txt", etc.
+        - Path patterns: "data/*/*.db" - matches databases two levels deep in data/
+        - Question mark: "file?.txt" - matches "file1.txt", "fileA.txt", etc.
+
+        Args:
+            pattern: File pattern to search for (supports * and ? wildcards)
+            case_sensitive: Whether search should be case-sensitive (default: False)
+            search_path: Optional path prefix to limit search scope (e.g., "data/data/", "System/")
+            max_results: Maximum number of results to return (default: unlimited)
+
+        Returns:
+            list[str]: List of matching file paths in the ZIP archive, sorted alphabetically
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            ValueError: If pattern is empty or invalid
+
+        Examples:
+            >>> # Find specific file
+            >>> files = api.find_files_in_zip("SystemVersion.plist")
+
+            >>> # Find all log files
+            >>> files = api.find_files_in_zip("*.log")
+
+            >>> # Find all databases in Android data directory
+            >>> files = api.find_files_in_zip("*.db", search_path="data/data/")
+
+            >>> # Find call log databases (case-insensitive)
+            >>> files = api.find_files_in_zip("*call*.db", case_sensitive=False)
+
+            >>> # Find files with wildcard path and name
+            >>> files = api.find_files_in_zip("*/Library/Preferences/*.plist")
+        """
+        import fnmatch
+
+        if not self._zip_handle:
+            raise RuntimeError("No ZIP file loaded. Use set_zip_file() first.")
+
+        if not pattern or not pattern.strip():
+            raise ValueError("Search pattern cannot be empty")
+
+        pattern = pattern.strip()
+
+        # Get all file paths from ZIP (exclude directories)
+        all_files = [info.filename for info in self._zip_handle.infolist() if not info.is_dir()]
+
+        # Filter by search_path if provided
+        if search_path:
+            search_path = search_path.strip()
+            if not case_sensitive:
+                search_path_lower = search_path.lower()
+                all_files = [f for f in all_files if f.lower().startswith(search_path_lower)]
+            else:
+                all_files = [f for f in all_files if f.startswith(search_path)]
+
+        # Prepare pattern for matching
+        if not case_sensitive:
+            pattern = pattern.lower()
+
+        # Match files against pattern
+        matches = []
+        for filepath in all_files:
+            # Get the filename to match against
+            if case_sensitive:
+                match_target = filepath
+            else:
+                match_target = filepath.lower()
+
+            # If search_path is specified, match against the relative path
+            if search_path:
+                # Remove the search_path prefix for pattern matching
+                search_prefix = search_path if case_sensitive else search_path.lower()
+                if match_target.startswith(search_prefix):
+                    relative_path = match_target[len(search_prefix):]
+                    # Use case-sensitive string comparison for pattern matching
+                    if case_sensitive:
+                        if fnmatch.fnmatchcase(relative_path, pattern):
+                            matches.append(filepath)
+                    else:
+                        if fnmatch.fnmatch(relative_path, pattern):
+                            matches.append(filepath)
+            else:
+                # Match against full path or just filename depending on pattern
+                if '/' in pattern:
+                    # Pattern includes path components, match full path
+                    if case_sensitive:
+                        if fnmatch.fnmatchcase(match_target, pattern):
+                            matches.append(filepath)
+                    else:
+                        if fnmatch.fnmatch(match_target, pattern):
+                            matches.append(filepath)
+                else:
+                    # Pattern is filename only, match just the basename
+                    basename = match_target.split('/')[-1]
+                    if case_sensitive:
+                        if fnmatch.fnmatchcase(basename, pattern):
+                            matches.append(filepath)
+                    else:
+                        if fnmatch.fnmatch(basename, pattern):
+                            matches.append(filepath)
+
+            # Check if we've hit the max results limit
+            if max_results is not None and len(matches) >= max_results:
+                break
+
+        # Sort results alphabetically for consistent output
+        matches.sort()
+
+        return matches
+
     def display_zip_contents(self) -> None:
         """
         Display a formatted table of ZIP contents.

@@ -9,10 +9,14 @@ A plugin-based forensic analysis tool for Python 3.12+ designed for processing a
 
 ## Features
 
-- **ZIP File Processing**: Built-in support for forensic analysis of ZIP archives
+- **ZIP File Processing**: Built-in support for forensic analysis of ZIP archives with advanced file search capabilities
+- **Forensic Format Support**: Automatic detection and handling of Cellebrite and GrayKey extraction formats (iOS/Android)
 - **Dynamic Plugin System**: Load and manage forensic plugins at runtime without code changes
+- **Plugin Profiles**: Run multiple plugins together using TOML configuration files for standard analysis workflows
 - **Beautiful CLI**: Color-coded output with Rich and Typer for forensic reporting
 - **Case Management**: Forensic case identifier support (Examiner ID, Case ID, Evidence ID) with automatic validation and report organization
+- **PDF Export**: Automatically export markdown reports to professionally styled PDF documents
+- **Production Forensic Plugins**: Ready-to-use iOS and Android analysis plugins for device info, apps, permissions, and call logs
 - **Type-Safe**: Full type hints with Pydantic validation
 - **Cross-Platform**: Build standalone executables for Windows and Linux
 - **Forensic-Focused**: Designed for digital forensics workflows and evidence processing
@@ -107,8 +111,18 @@ python -m yaft.cli info ZipAnalyzerPlugin
 python -m yaft.cli run ZipAnalyzerPlugin --zip evidence.zip
 
 # iOS forensic analysis
-python -m yaft.cli run iOSAppGUIDExtractorPlugin --zip ios_extraction.zip
-python -m yaft.cli run iOSAppPermissionsExtractorPlugin --zip ios_extraction.zip
+python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip ios_extraction.zip
+python -m yaft.cli run iOSCallLogAnalyzerPlugin --zip ios_extraction.zip
+
+# Android forensic analysis
+python -m yaft.cli run AndroidDeviceInfoExtractorPlugin --zip android_extraction.zip
+python -m yaft.cli run AndroidCallLogAnalyzerPlugin --zip android_extraction.zip
+
+# Run multiple plugins using a profile
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml
+
+# Enable PDF export
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml --pdf
 
 # Run other plugins
 python -m yaft.cli run HelloWorldPlugin
@@ -141,12 +155,12 @@ YAFT includes built-in support for forensic case management. When running plugin
 **Example Usage:**
 ```bash
 # Run a plugin (will prompt for case identifiers)
-python -m yaft.cli run iOSAppGUIDExtractorPlugin --zip evidence.zip
+python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip
 
 # You will be prompted:
-# ? Examiner ID (alphanumeric, 2-50 chars): john_doe
-# ? Case ID (format: CASE2024-01): CASE2024-01
-# ? Evidence ID (format: BG123456-1): BG123456-1
+# Examiner ID (alphanumeric, 2-50 chars): john_doe
+# Case ID (alphanumeric): CASE2024-01
+# Evidence ID (alphanumeric): BG123456-1
 ```
 
 **Output Organization:**
@@ -271,9 +285,26 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     self.core_api.extract_all_zip(Path("output"))
     self.core_api.display_zip_contents()
 
+    # ZIP file search with wildcards
+    files = self.core_api.find_files_in_zip("*.db")  # Find all databases
+    files = self.core_api.find_files_in_zip("*call*.db", search_path="data/data/")  # Find call logs
+    files = self.core_api.find_files_in_zip("*.plist", search_path="System/Library/")  # Find plists
+
+    # Forensic format detection (Cellebrite/GrayKey)
+    format_type, prefix = self.core_api.detect_zip_format()
+    normalized_path = self.core_api.normalize_zip_path("data/data/com.example/app.db", prefix)
+
+    # OS detection (iOS/Android)
+    os_type = self.core_api.get_detected_os()  # Returns ExtractionOS.IOS or ExtractionOS.ANDROID
+    extraction_info = self.core_api.get_extraction_info()  # Includes OS version
+
     # Plist parsing (iOS forensics)
     plist_data = self.core_api.read_plist_from_zip("Info.plist")
     plist_content = self.core_api.parse_plist(raw_bytes)
+
+    # XML parsing (Android forensics)
+    xml_root = self.core_api.read_xml_from_zip("packages.xml")
+    xml_content = self.core_api.parse_xml(raw_bytes)
 
     # SQLite querying from ZIP (iOS forensics)
     rows = self.core_api.query_sqlite_from_zip(
@@ -321,21 +352,132 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     self.core_api.console.print("[bold blue]Formatted text[/bold blue]")
 ```
 
-### Example Plugins
+### Production Forensic Plugins
 
-Six plugins are included:
+YaFT includes production-ready forensic analysis plugins for both iOS and Android devices:
 
-**Forensic Analysis Plugins:**
-1. **zip_analyzer.py**: General forensic analysis of ZIP archives
-2. **ios_app_guid_extractor.py**: iOS application GUID and bundle ID extraction from filesystem extractions
-3. **ios_app_permissions_extractor.py**: iOS application permissions, usage statistics, and privacy analysis
+**iOS Forensic Plugins:**
+1. **iOSDeviceInfoExtractorPlugin**: Extract comprehensive device information (UDID, IMEI, serial, carrier, timezone, backup info)
+2. **iOSCallLogAnalyzerPlugin**: Analyze call history from CallHistory.storedata (regular calls, FaceTime, missed calls)
+
+**Android Forensic Plugins:**
+3. **AndroidDeviceInfoExtractorPlugin**: Extract device information (manufacturer, model, Android version, IMEI, security settings)
+4. **AndroidAppInfoExtractorPlugin**: Extract application metadata (packages.xml, usage statistics, categorization)
+5. **AndroidAppPermissionsExtractorPlugin**: Analyze app permissions (runtime permissions, risk scoring, high-risk detection)
+6. **AndroidCallLogAnalyzerPlugin**: Analyze call history from calllog.db (regular calls, video calls, pattern analysis)
+
+**Forensic Format Support:**
+- All plugins support both **Cellebrite** and **GrayKey** extraction formats
+- Automatic format detection and path normalization
+- Works with iOS and Android extractions
 
 **General Purpose Plugins:**
-4. **hello_world.py**: Simple greeting plugin
-5. **file_processor.py**: File processing with statistics
-6. **system_info.py**: System information display
+7. **hello_world.py**: Simple greeting plugin (example)
+8. **file_processor.py**: File processing with statistics (example)
+9. **system_info.py**: System information display (example)
 
-The iOS forensic plugins are production-ready tools for analyzing iOS extractions (Cellebrite format supported).
+### Plugin Profiles
+
+Pre-configured analysis workflows are available in the `profiles/` directory:
+
+**iOS Profiles:**
+- `ios_full_analysis.toml`: Complete iOS forensic analysis (device info, call logs)
+- `ios_device_only.toml`: Quick device information extraction
+
+**Android Profiles:**
+- `android_full_analysis.toml`: Complete Android forensic analysis (device info, apps, permissions, call logs)
+- `android_apps_analysis.toml`: Application-focused analysis (metadata and permissions)
+
+Usage:
+```bash
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml
+python -m yaft.cli run --zip android.zip --profile profiles/android_full_analysis.toml --pdf
+```
+
+## Advanced Features
+
+### ZIP File Search
+
+The Core API provides powerful file search capabilities with glob-style wildcard patterns:
+
+```python
+# Find specific files
+files = self.core_api.find_files_in_zip("SystemVersion.plist")
+
+# Find all files with specific extension
+files = self.core_api.find_files_in_zip("*.db")
+
+# Find files matching pattern
+files = self.core_api.find_files_in_zip("*call*.db")
+
+# Search within specific directory
+files = self.core_api.find_files_in_zip("*.db", search_path="data/data/")
+
+# Case-sensitive search
+files = self.core_api.find_files_in_zip("File.TXT", case_sensitive=True)
+
+# Limit results
+files = self.core_api.find_files_in_zip("*.log", max_results=10)
+
+# Complex patterns with wildcards in paths
+files = self.core_api.find_files_in_zip("*/databases/*.db")
+```
+
+**Supported patterns:**
+- `*` - Matches zero or more characters
+- `?` - Matches exactly one character
+- `*.ext` - All files with extension
+- `name.*` - File with any extension
+- `*pattern*` - Files containing pattern
+- `path/*/file.ext` - Wildcards in paths
+
+### PDF Export
+
+Automatically export markdown reports to professionally styled PDFs:
+
+**Installation (Optional):**
+```bash
+# Install PDF export dependencies
+uv pip install -e ".[pdf]"
+
+# Or install manually
+uv pip install markdown weasyprint
+```
+
+**Windows Note:** WeasyPrint requires GTK libraries. Download GTK3 Runtime from [here](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and add to PATH.
+
+**Usage:**
+```bash
+# Enable PDF export with --pdf flag
+python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip --pdf
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml --pdf
+```
+
+PDFs are generated with professional styling including:
+- Blue color scheme with proper typography
+- Tables, code blocks, lists, headings
+- A4 page format with proper margins
+- Automatic generation alongside markdown reports
+
+### Forensic Format Detection
+
+YaFT automatically detects and handles different extraction formats:
+
+**Supported Formats:**
+- **Cellebrite iOS**: `filesystem1/` or `filesystem/` prefix
+- **Cellebrite Android**: `Dump/` or `fs/` prefix
+- **GrayKey iOS**: No prefix (root-level iOS paths)
+- **GrayKey Android**: No prefix (root-level Android paths)
+
+Plugins automatically detect the format and normalize file paths:
+
+```python
+# Detect format
+format_type, prefix = self.core_api.detect_zip_format()
+
+# Normalize paths for access
+path = self.core_api.normalize_zip_path("data/data/com.example/app.db", prefix)
+```
 
 ## Building Executables
 
