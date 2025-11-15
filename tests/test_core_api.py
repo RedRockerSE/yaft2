@@ -712,7 +712,11 @@ def test_generated_reports_tracking(core_api, temp_dir):
 def test_convert_markdown_to_pdf(core_api, temp_dir):
     """Test converting markdown to PDF."""
     pytest.importorskip("markdown")
-    pytest.importorskip("weasyprint")
+    # Skip if weasyprint isn't available or can't load system libraries
+    try:
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as e:
+        pytest.skip(f"WeasyPrint not available: {e}")
 
     # Create a markdown file
     md_path = temp_dir / "test_report.md"
@@ -749,7 +753,11 @@ This is a test report.
 def test_convert_markdown_to_pdf_custom_output(core_api, temp_dir):
     """Test converting markdown to PDF with custom output path."""
     pytest.importorskip("markdown")
-    pytest.importorskip("weasyprint")
+    # Skip if weasyprint isn't available or can't load system libraries
+    try:
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as e:
+        pytest.skip(f"WeasyPrint not available: {e}")
 
     md_path = temp_dir / "report.md"
     md_path.write_text("# Test\n\nContent", encoding='utf-8')
@@ -764,7 +772,11 @@ def test_convert_markdown_to_pdf_custom_output(core_api, temp_dir):
 def test_convert_markdown_to_pdf_file_not_found(core_api, temp_dir):
     """Test PDF conversion with nonexistent markdown file."""
     pytest.importorskip("markdown")
-    pytest.importorskip("weasyprint")
+    # Skip if weasyprint isn't available or can't load system libraries
+    try:
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as e:
+        pytest.skip(f"WeasyPrint not available: {e}")
 
     md_path = temp_dir / "nonexistent.md"
 
@@ -775,7 +787,11 @@ def test_convert_markdown_to_pdf_file_not_found(core_api, temp_dir):
 def test_generate_report_with_pdf_export(core_api, temp_dir):
     """Test generating report with PDF export enabled."""
     pytest.importorskip("markdown")
-    pytest.importorskip("weasyprint")
+    # Skip if weasyprint isn't available or can't load system libraries
+    try:
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as e:
+        pytest.skip(f"WeasyPrint not available: {e}")
 
     # Set case identifiers for proper path structure
     core_api.set_case_identifiers("examiner01", "CASE2024-01", "EV123")
@@ -804,7 +820,11 @@ def test_generate_report_with_pdf_export(core_api, temp_dir):
 def test_export_all_reports_to_pdf(core_api, temp_dir):
     """Test batch export of all reports to PDF."""
     pytest.importorskip("markdown")
-    pytest.importorskip("weasyprint")
+    # Skip if weasyprint isn't available or can't load system libraries
+    try:
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as e:
+        pytest.skip(f"WeasyPrint not available: {e}")
 
     # Generate multiple reports
     sections = [{"heading": "Test", "content": "Content"}]
@@ -831,7 +851,11 @@ def test_export_all_reports_to_pdf_empty(core_api):
 def test_export_all_reports_to_pdf_with_missing_file(core_api, temp_dir):
     """Test exporting reports when some markdown files are missing."""
     pytest.importorskip("markdown")
-    pytest.importorskip("weasyprint")
+    # Skip if weasyprint isn't available or can't load system libraries
+    try:
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as e:
+        pytest.skip(f"WeasyPrint not available: {e}")
 
     # Generate a report
     sections = [{"heading": "Test", "content": "Content"}]

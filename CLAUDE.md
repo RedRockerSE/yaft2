@@ -299,8 +299,14 @@ report_path = self.core_api.generate_report(
 YaFT supports automatic PDF export of markdown reports with professional formatting. PDFs are generated with proper styling including tables, code blocks, headings, and lists.
 
 **Dependencies:**
+
+PDF export is **optional** and requires additional packages. YaFT works perfectly without these dependencies - they're only needed if you want to generate PDF reports.
+
 ```bash
-# PDF export requires additional packages
+# Install PDF export dependencies
+uv pip install -e ".[pdf]"
+
+# Or install manually
 uv pip install markdown weasyprint
 ```
 

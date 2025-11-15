@@ -4,7 +4,3 @@ rich>=13.7.0
 pydantic>=2.6.0
 pydantic-settings>=2.1.0
 toml>=0.10.2
-
-# PDF export dependencies (optional)
-markdown>=3.5.0
-weasyprint>=60.0
