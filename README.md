@@ -359,12 +359,13 @@ YaFT includes production-ready forensic analysis plugins for both iOS and Androi
 **iOS Forensic Plugins:**
 1. **iOSDeviceInfoExtractorPlugin**: Extract comprehensive device information (UDID, IMEI, serial, carrier, timezone, backup info)
 2. **iOSCallLogAnalyzerPlugin**: Analyze call history from CallHistory.storedata (regular calls, FaceTime, missed calls)
+3. **iOSCellularInfoExtractorPlugin**: Extract cellular information from com.apple.commcenter.plist (IMSI, IMEI updates, ICCI, phone number)
 
 **Android Forensic Plugins:**
-3. **AndroidDeviceInfoExtractorPlugin**: Extract device information (manufacturer, model, Android version, IMEI, security settings)
-4. **AndroidAppInfoExtractorPlugin**: Extract application metadata (packages.xml, usage statistics, categorization)
-5. **AndroidAppPermissionsExtractorPlugin**: Analyze app permissions (runtime permissions, risk scoring, high-risk detection)
-6. **AndroidCallLogAnalyzerPlugin**: Analyze call history from calllog.db (regular calls, video calls, pattern analysis)
+4. **AndroidDeviceInfoExtractorPlugin**: Extract device information (manufacturer, model, Android version, IMEI, security settings)
+5. **AndroidAppInfoExtractorPlugin**: Extract application metadata (packages.xml, usage statistics, categorization)
+6. **AndroidAppPermissionsExtractorPlugin**: Analyze app permissions (runtime permissions, risk scoring, high-risk detection)
+7. **AndroidCallLogAnalyzerPlugin**: Analyze call history from calllog.db (regular calls, video calls, pattern analysis)
 
 **Forensic Format Support:**
 - All plugins support both **Cellebrite** and **GrayKey** extraction formats
@@ -372,9 +373,9 @@ YaFT includes production-ready forensic analysis plugins for both iOS and Androi
 - Works with iOS and Android extractions
 
 **General Purpose Plugins:**
-7. **hello_world.py**: Simple greeting plugin (example)
-8. **file_processor.py**: File processing with statistics (example)
-9. **system_info.py**: System information display (example)
+8. **hello_world.py**: Simple greeting plugin (example)
+9. **file_processor.py**: File processing with statistics (example)
+10. **system_info.py**: System information display (example)
 
 ### Plugin Profiles
 
