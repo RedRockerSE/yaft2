@@ -118,7 +118,7 @@ class iOSCellularInfoExtractorPlugin(PluginBase):
             bool: True if extraction successful, False otherwise
         """
         # Search for the cellular plist file
-        plist_pattern = "*com.apple.commcenter.plist"
+        plist_pattern = "*/wireless/Library/Preferences/com.apple.commcenter.plist"
 
         self.core_api.log_info(f"Searching for cellular plist files: {plist_pattern}")
 
