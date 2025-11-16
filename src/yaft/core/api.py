@@ -969,7 +969,7 @@ class CoreAPI:
                 root_folders.add(parts[0] + '/')
 
         # Check for Cellebrite Android format (Dump/ and extra/ folders)
-        if 'Dump/' in root_folders or 'extra/' in root_folders:
+        if 'Dump/' in root_folders or 'extra/' in root_folders and not 'filesystem1/' in root_folders:
             self.log_info("Detected format: Cellebrite Android (Dump/extra/)")
             return ("cellebrite_android", "Dump/")
 
