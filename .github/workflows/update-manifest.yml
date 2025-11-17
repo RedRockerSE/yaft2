@@ -1,0 +1,57 @@
+name: Update Plugin Manifest
+
+on:
+  push:
+    paths:
+      - 'plugins/*.py'
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  update-manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper git operations
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -e .
+
+      - name: Generate Plugin Manifest
+        run: |
+          python scripts/generate_manifest.py
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code plugins_manifest.json || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        if: steps.git-check.outputs.changed == 'true'
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add plugins_manifest.json
+          git commit -m "chore: update plugin manifest [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: No changes detected
+        if: steps.git-check.outputs.changed != 'true'
+        run: |
+          echo "No changes to plugin manifest detected."

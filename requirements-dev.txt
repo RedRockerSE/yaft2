@@ -5,3 +5,6 @@ pytest-cov>=4.1.0
 ruff>=0.2.0
 mypy>=1.8.0
 pyinstaller>=6.3.0
+types-requests>=2.32.0
+types-toml>=0.10.8
+types-Markdown>=3.7.0
