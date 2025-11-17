@@ -148,6 +148,7 @@ class PluginUpdater:
             return UpdateCheckResult(
                 updates_available=False,
                 manifest_changed=False,
+                error=None,
             )
 
         try:
@@ -167,6 +168,7 @@ class PluginUpdater:
                     updates_available=False,
                     manifest_changed=False,
                     total_plugins=len(remote_manifest.plugins),
+                    error=None,
                 )
 
             # Compare local vs remote plugins
@@ -191,6 +193,7 @@ class PluginUpdater:
                 updated_plugins=updated_plugins,
                 total_plugins=len(remote_manifest.plugins),
                 manifest_changed=manifest_changed,
+                error=None,
             )
 
         except Exception as e:
@@ -427,6 +430,7 @@ class PluginUpdater:
                     sha256=sha256,
                     size=size,
                     required=False,
+                    os_target=None,
                 )
             )
 

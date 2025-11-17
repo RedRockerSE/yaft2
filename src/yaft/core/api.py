@@ -1791,7 +1791,7 @@ class CoreAPI:
         repo: str = "RedRockerSE/yaft",
         branch: str = "main",
         plugins_dir: Path | None = None,
-    ) -> "PluginUpdater":
+    ) -> Any:
         """
         Get a PluginUpdater instance for managing plugin updates.
 
