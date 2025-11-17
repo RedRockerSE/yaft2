@@ -76,7 +76,7 @@ def extract_plugin_metadata(file_path: Path) -> Dict[str, Any]:
 def generate_manifest(
     plugins_dir: Path,
     output_path: Path,
-    repository: str = "RedRockerSE/yaft",
+    repository: str = "RedRockerSE/yaft2",
     branch: str = "main",
 ) -> None:
     """Generate plugins manifest file."""
@@ -158,7 +158,7 @@ def main():
     generate_manifest(
         plugins_dir=plugins_dir,
         output_path=output_path,
-        repository="RedRockerSE/yaft",
+        repository="RedRockerSE/yaft2",
         branch="main",
     )
 
