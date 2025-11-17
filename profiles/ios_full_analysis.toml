@@ -1,14 +1,4 @@
-# iOS Full Analysis Profile
-# Comprehensive analysis for iOS device extractions
-# Runs all iOS-related forensic plugins
-
 [profile]
 name = "iOS Full Analysis"
 description = "Complete forensic analysis for iOS device extractions including device info, apps, permissions, and call logs"
-
-plugins = [
-    "iOSDeviceInfoExtractorPlugin",
-    "iOSAppGUIDExtractorPlugin",
-    "iOSAppPermissionsExtractorPlugin",
-    "iOSCallLogAnalyzerPlugin",
-]
+plugins = [ "iOSDeviceInfoExtractorPlugin", "iOSCellularInfoExtractorPlugin", "iOSAppGUIDExtractorPlugin", "iOSAppPermissionsExtractorPlugin", "iOSCallLogAnalyzerPlugin",]
