@@ -96,10 +96,136 @@ uv pip install -e ".[dev]"
 uv pip install -r requirements-dev.txt
 ```
 
+### Plugin Update System
+
+YAFT includes a built-in plugin update system that automatically syncs plugins from the GitHub repository. This ensures you always have access to the latest forensic analysis plugins without manually downloading files.
+
+> **⚠️ Important:** After installing YAFT for the first time, you must download the plugins using the update system. The plugins are not included in the base installation to keep it lightweight and allow you to always have the latest versions.
+
+#### First-Time Setup: Download All Plugins
+
+After installing YAFT, download all available plugins from the repository:
+
+```bash
+# Download all plugins from GitHub
+python -m yaft.cli update-plugins
+
+# This will:
+# - Fetch the plugin manifest from GitHub
+# - Download all available plugins
+# - Verify file integrity with SHA256 hashes
+# - Save plugins to the plugins/ directory
+```
+
+**What gets downloaded:**
+- All iOS forensic plugins (device info, call logs, cellular info)
+- All Android forensic plugins (device info, apps, permissions, call logs)
+- Example plugins for learning and testing
+
+#### Keeping Plugins Up to Date
+
+Check for and install plugin updates regularly:
+
+```bash
+# Check for updates and download them
+python -m yaft.cli update-plugins
+
+# Check for updates without downloading (preview mode)
+python -m yaft.cli update-plugins --check-only
+
+# Force check (ignore cache, useful if you just heard about new plugins)
+python -m yaft.cli update-plugins --force
+
+# Update a specific plugin only
+python -m yaft.cli update-plugins --plugin ios_device_info_extractor.py
+```
+
+#### Browsing Available Plugins
+
+See what plugins are available in the repository before downloading:
+
+```bash
+# List all available plugins from GitHub repository
+python -m yaft.cli list-available-plugins
+
+# Filter by operating system
+python -m yaft.cli list-available-plugins --os ios
+python -m yaft.cli list-available-plugins --os android
+```
+
+**Output includes:**
+- Plugin name and filename
+- Version number
+- Target OS (iOS, Android, or general)
+- File size
+- Whether plugin is required for basic functionality
+
+#### How the Update System Works
+
+**Security & Integrity:**
+- All plugins are verified with SHA256 hashes before installation
+- Downloads use HTTPS connections only
+- No code is executed during download
+- Existing plugins are backed up before overwriting
+
+**Smart Caching:**
+- Checks for updates at most once every 24 hours by default
+- Cached manifest enables offline viewing of available plugins
+- Use `--force` flag to bypass cache when needed
+
+**Offline Friendly:**
+- Once plugins are downloaded, no internet connection is needed for forensic analysis
+- Cached manifests let you work completely offline
+- Perfect for air-gapped forensic workstations
+
+#### Update System Example Workflow
+
+```bash
+# Day 1: Initial setup
+python -m yaft.cli update-plugins
+# Output: Downloaded 14 plugins, verified 14 plugins
+
+# Day 30: Check for new plugins
+python -m yaft.cli update-plugins --check-only
+# Output: Updates available:
+#   New plugins: 2
+#     • ios_app_privacy_extractor.py
+#     • android_location_analyzer.py
+
+# Download the new plugins
+python -m yaft.cli update-plugins
+# Output: Downloaded 2 plugins, verified 2 plugins
+
+# Verify you have the new plugins
+python -m yaft.cli list-plugins
+```
+
+#### Troubleshooting Plugin Updates
+
+**"No plugins found in repository"**
+- Check your internet connection
+- Verify you can access GitHub: `https://github.com/RedRockerSE/yaft2`
+- Try with `--force` flag to bypass cache
+
+**"Failed to download plugin"**
+- Temporary network issue - try again
+- Check if your firewall blocks GitHub
+- Verify you have write permissions to the `plugins/` directory
+
+**"SHA256 mismatch"**
+- Plugin file was corrupted during download
+- Run the update command again to re-download
+- If issue persists, report it on the GitHub repository
+
+**"Updates available but download fails"**
+- Check available disk space
+- Verify `plugins/` directory exists and is writable
+- Try updating one plugin at a time: `--plugin filename.py`
+
 ### Basic Usage
 
 ```bash
-# List available plugins
+# List locally installed plugins
 python -m yaft.cli list-plugins
 
 # Show all plugins (including unloaded)
@@ -107,15 +233,6 @@ python -m yaft.cli list-plugins --all
 
 # Get plugin information
 python -m yaft.cli info ZipAnalyzerPlugin
-
-# Update plugins from GitHub repository
-python -m yaft.cli update-plugins
-
-# Check for updates only (don't download)
-python -m yaft.cli update-plugins --check-only
-
-# List all available plugins from repository
-python -m yaft.cli list-available-plugins
 
 # Analyze a ZIP file with a plugin (NOTE: use full class name with "Plugin" suffix)
 python -m yaft.cli run ZipAnalyzerPlugin --zip evidence.zip
