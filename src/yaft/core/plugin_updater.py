@@ -91,7 +91,7 @@ class PluginUpdater:
 
     def __init__(
         self,
-        repo: str = "RedRockerSE/yaft",
+        repo: str = "RedRockerSE/yaft2",
         branch: str = "main",
         plugins_dir: Path | None = None,
         cache_dir: Path | None = None,

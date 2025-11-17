@@ -1,0 +1,180 @@
+{
+  "manifest_version": "1.0.0",
+  "last_updated": "2025-11-17T16:28:19.237169+00:00",
+  "repository": "RedRockerSE/yaft2",
+  "branch": "main",
+  "plugins": [
+    {
+      "name": "AndroidAppInfoExtractorPlugin",
+      "filename": "android_app_info_extractor.py",
+      "version": "1.0.0",
+      "description": "",
+      "sha256": "fc2dea0b1c7cac52a4f0fb84bd6ad8cd849dced8e1f74a3dd6330f77f9c3c2d7",
+      "size": 19411,
+      "required": true,
+      "os_target": [
+        "android"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "AndroidAppPermissionsExtractorPlugin",
+      "filename": "android_app_permissions_extractor.py",
+      "version": "1.0.0",
+      "description": "",
+      "sha256": "c6007660b07fc53ee6f4439dafe72a1cb179cffd2192dfd2801a14ef1f71bf9a",
+      "size": 25968,
+      "required": true,
+      "os_target": [
+        "android"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "AndroidCallLogAnalyzerPlugin",
+      "filename": "android_call_log_analyzer.py",
+      "version": "1.0.0",
+      "description": "Extract and analyze Android call history including call types and duration",
+      "sha256": "a46b3f8d65b7faf7754154bd20566be516319a5a23224a638a84da329592da4b",
+      "size": 20044,
+      "required": true,
+      "os_target": [
+        "android"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "AndroidDeviceInfoExtractorPlugin",
+      "filename": "android_device_info_extractor.py",
+      "version": "1.0.0",
+      "description": "",
+      "sha256": "d9c30d60891faa5e3d72f81679f7c50c8f832fe4663b9eefdca3b8e2bf8a0792",
+      "size": 30580,
+      "required": true,
+      "os_target": [
+        "android"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "FileProcessorPlugin",
+      "filename": "file_processor.py",
+      "version": "1.0.0",
+      "description": "Processes text files and displays statistics",
+      "sha256": "2627c926b8c72b312c2483a1c8ed46e6aa5d61a4e3a2f765fed093506f1f57dc",
+      "size": 5947,
+      "required": false,
+      "os_target": null,
+      "dependencies": []
+    },
+    {
+      "name": "Genericparserplugin",
+      "filename": "genericparserplugin.py",
+      "version": "1.0.0",
+      "description": "A generic parser aimed at showcasing the create_plugin.py tool.",
+      "sha256": "05887829f149ce3cbf86d16cc246c4b705b4a8e9daeae50ab24d4e0ecace062e",
+      "size": 3851,
+      "required": false,
+      "os_target": null,
+      "dependencies": []
+    },
+    {
+      "name": "HelloWorldPlugin",
+      "filename": "hello_world.py",
+      "version": "1.0.0",
+      "description": "A simple greeting plugin that demonstrates basic plugin functionality",
+      "sha256": "7f689ffbe0a26657b5ba8ba7c376eb2fc6f87c3d3da14dfb4e2f8b859c02537a",
+      "size": 3103,
+      "required": false,
+      "os_target": null,
+      "dependencies": []
+    },
+    {
+      "name": "iOSAppGUIDExtractorPlugin",
+      "filename": "ios_app_guid_extractor.py",
+      "version": "1.0.0",
+      "description": "Extract iOS app GUIDs, bundle IDs, and metadata from filesystem extractions",
+      "sha256": "3680c56a65bb1c7090d175cb2fb72658e582d9cb04d048af00312ca5b1233f6c",
+      "size": 17129,
+      "required": true,
+      "os_target": [
+        "ios"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "iOSAppPermissionsExtractorPlugin",
+      "filename": "ios_app_permissions_extractor.py",
+      "version": "1.0.0",
+      "description": "Extract iOS app permissions, usage statistics, and privacy data from filesystem extractions",
+      "sha256": "774c77e8e19c8d7c8cce63a5b45dc3ce7e06189ad955e039fb9abf34cd1c1b6b",
+      "size": 23567,
+      "required": true,
+      "os_target": [
+        "ios"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "iOSCallLogAnalyzerPlugin",
+      "filename": "ios_call_log_analyzer.py",
+      "version": "1.0.0",
+      "description": "Extract and analyze iOS call history including FaceTime calls",
+      "sha256": "90c802344b07133ea499e09c9d0e8f8b2cad1a5d0125f4f203379cb5d34dd662",
+      "size": 17297,
+      "required": true,
+      "os_target": [
+        "ios"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "iOSCellularInfoExtractorPlugin",
+      "filename": "ios_cellular_info_extractor.py",
+      "version": "1.0.0",
+      "description": "Extract cellular information (IMEI, IMSI, ICCI, Phone Number) from iOS devices",
+      "sha256": "0534f4f490a60444eff30efed568cb4c9c18f30e203c15f36088e2849899bde0",
+      "size": 12854,
+      "required": true,
+      "os_target": [
+        "ios"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "iOSDeviceInfoExtractorPlugin",
+      "filename": "ios_device_info_extractor.py",
+      "version": "1.0.0",
+      "description": "Extract comprehensive device metadata from iOS filesystem extractions",
+      "sha256": "172bf76d06a1a99472ce8f44f4bdb9e0ebe1f8706afaecb976ec08801db13d49",
+      "size": 20940,
+      "required": true,
+      "os_target": [
+        "ios"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "SystemInfoPlugin",
+      "filename": "system_info.py",
+      "version": "1.0.0",
+      "description": "Displays system and Python environment information",
+      "sha256": "2f4b7e283f0d29a5a3f4f775f47caa20ae6e2083e3845c097440e1e8179cd63b",
+      "size": 6630,
+      "required": false,
+      "os_target": null,
+      "dependencies": []
+    },
+    {
+      "name": "ZipAnalyzerPlugin",
+      "filename": "zip_analyzer.py",
+      "version": "1.0.0",
+      "description": "Forensic analysis of ZIP archives - file listing, suspicious file detection, extraction",
+      "sha256": "ca46544daf197f35ddd80996e396fe9772023da4a23cf5a809b37c9e93f08f89",
+      "size": 11485,
+      "required": false,
+      "os_target": null,
+      "dependencies": []
+    }
+  ]
+}

@@ -77,3 +77,4 @@ CLAUDE.md
 
 # Research files
 research/
+.plugin_cache/last_check.txt
