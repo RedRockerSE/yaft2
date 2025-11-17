@@ -421,6 +421,203 @@ def reload() -> None:
     core_api.print_success(f"Reloaded {stats['loaded']} plugins")
 
 
+@app.command()
+def update_plugins(
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Force update check (ignore cache)"),
+    ] = False,
+    plugin: Annotated[
+        str | None,
+        typer.Option("--plugin", "-p", help="Update specific plugin by filename"),
+    ] = None,
+    check_only: Annotated[
+        bool,
+        typer.Option("--check-only", "-c", help="Only check for updates, don't download"),
+    ] = False,
+    no_verify: Annotated[
+        bool,
+        typer.Option("--no-verify", help="Skip SHA256 verification (not recommended)"),
+    ] = False,
+) -> None:
+    """
+    Update plugins from GitHub repository.
+
+    This command checks for plugin updates and optionally downloads them.
+    By default, it checks for updates and downloads any new or updated plugins.
+
+    Examples:
+        yaft update-plugins                    # Check and download updates
+        yaft update-plugins --check-only       # Only check, don't download
+        yaft update-plugins --force            # Force check (ignore cache)
+        yaft update-plugins --plugin ios.py    # Update specific plugin
+    """
+    core_api = get_core_api()
+
+    console.print(Panel(
+        "[bold cyan]Plugin Update System[/bold cyan]\n"
+        "Checking for plugin updates from GitHub...",
+        border_style="cyan",
+    ))
+
+    try:
+        # Get updater instance
+        updater = core_api.get_plugin_updater()
+
+        # Check for updates
+        console.print("[cyan]→[/cyan] Checking for updates...")
+        check_result = updater.check_for_updates(force=force)
+
+        if check_result.error:
+            console.print(f"[red]✗ Error:[/red] {check_result.error}")
+            raise typer.Exit(code=1)
+
+        if not check_result.updates_available:
+            console.print("[green]✓[/green] All plugins up to date!")
+            console.print(f"[dim]Total plugins: {check_result.total_plugins}[/dim]")
+            return
+
+        # Display update information
+        console.print(f"\n[yellow]Updates available:[/yellow]")
+        if check_result.new_plugins:
+            console.print(f"  [cyan]New plugins:[/cyan] {len(check_result.new_plugins)}")
+            for p in check_result.new_plugins[:5]:  # Show first 5
+                console.print(f"    • {p}")
+            if len(check_result.new_plugins) > 5:
+                console.print(f"    ... and {len(check_result.new_plugins) - 5} more")
+
+        if check_result.updated_plugins:
+            console.print(f"  [cyan]Updated plugins:[/cyan] {len(check_result.updated_plugins)}")
+            for p in check_result.updated_plugins[:5]:  # Show first 5
+                console.print(f"    • {p}")
+            if len(check_result.updated_plugins) > 5:
+                console.print(f"    ... and {len(check_result.updated_plugins) - 5} more")
+
+        if check_only:
+            console.print("\n[dim]Use [bold]update-plugins[/bold] without --check-only to download updates.[/dim]")
+            return
+
+        # Download updates
+        console.print("\n[cyan]→[/cyan] Downloading updates...")
+
+        plugins_to_download = None
+        if plugin:
+            plugins_to_download = [plugin]
+
+        download_result = updater.download_plugins(
+            plugin_list=plugins_to_download,
+            verify=not no_verify,
+            backup=True,
+        )
+
+        # Display results
+        if download_result.success:
+            console.print(f"\n[green]✓ Update complete![/green]")
+            console.print(f"  Downloaded: {len(download_result.downloaded)} plugins")
+            if download_result.verified:
+                console.print(f"  Verified: {len(download_result.verified)} plugins")
+        else:
+            console.print(f"\n[yellow]⚠ Update completed with errors[/yellow]")
+            console.print(f"  Downloaded: {len(download_result.downloaded)} plugins")
+            console.print(f"  Failed: {len(download_result.failed)} plugins")
+
+            if download_result.errors:
+                console.print("\n[red]Errors:[/red]")
+                for error in download_result.errors[:5]:  # Show first 5 errors
+                    console.print(f"  • {error}")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Failed to update plugins:[/red] {str(e)}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def list_available_plugins(
+    os_filter: Annotated[
+        str | None,
+        typer.Option("--os", "-o", help="Filter by OS (ios, android)"),
+    ] = None,
+) -> None:
+    """
+    List all available plugins from GitHub repository.
+
+    Shows plugins available for download from the remote repository,
+    including version, size, and target OS information.
+
+    Examples:
+        yaft list-available-plugins              # List all plugins
+        yaft list-available-plugins --os ios     # List iOS plugins only
+    """
+    core_api = get_core_api()
+
+    console.print(Panel(
+        "[bold cyan]Available Plugins[/bold cyan]\n"
+        "Listing plugins from GitHub repository...",
+        border_style="cyan",
+    ))
+
+    try:
+        # Get updater instance
+        updater = core_api.get_plugin_updater()
+
+        # Check for updates to refresh manifest
+        console.print("[cyan]→[/cyan] Fetching plugin list...")
+        updater.check_for_updates(force=True)
+
+        # List plugins
+        plugins = updater.list_available_plugins()
+
+        if not plugins:
+            console.print("[yellow]No plugins found in repository[/yellow]")
+            return
+
+        # Filter by OS if requested
+        if os_filter:
+            os_filter_lower = os_filter.lower()
+            plugins = [
+                p for p in plugins
+                if p["os_target"] and os_filter_lower in [os.lower() for os in p["os_target"]]
+            ]
+
+        if not plugins:
+            console.print(f"[yellow]No {os_filter} plugins found[/yellow]")
+            return
+
+        # Display plugins in a table
+        from rich.table import Table
+
+        table = Table(title=f"Available Plugins ({len(plugins)} total)")
+        table.add_column("Plugin Name", style="cyan")
+        table.add_column("Filename", style="white")
+        table.add_column("Version", style="green")
+        table.add_column("OS", style="yellow")
+        table.add_column("Size", style="dim")
+        table.add_column("Required", style="magenta")
+
+        for plugin in plugins:
+            os_target = ", ".join(plugin["os_target"]) if plugin["os_target"] else "N/A"
+            size_kb = plugin["size"] / 1024
+            required = "Yes" if plugin["required"] else "No"
+
+            table.add_row(
+                plugin["name"],
+                plugin["filename"],
+                plugin["version"],
+                os_target,
+                f"{size_kb:.1f} KB",
+                required,
+            )
+
+        console.print(table)
+
+        if os_filter:
+            console.print(f"\n[dim]Filtered by OS: {os_filter}[/dim]")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Failed to list plugins:[/red] {str(e)}")
+        raise typer.Exit(code=1)
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,

@@ -13,6 +13,7 @@ A plugin-based forensic analysis tool for Python 3.12+ designed for processing a
 - **Forensic Format Support**: Automatic detection and handling of Cellebrite and GrayKey extraction formats (iOS/Android)
 - **Dynamic Plugin System**: Load and manage forensic plugins at runtime without code changes
 - **Plugin Profiles**: Run multiple plugins together using TOML configuration files for standard analysis workflows
+- **Automatic Plugin Updates**: Built-in update system to sync plugins from GitHub with SHA256 verification and offline caching
 - **Beautiful CLI**: Color-coded output with Rich and Typer for forensic reporting
 - **Case Management**: Forensic case identifier support (Examiner ID, Case ID, Evidence ID) with automatic validation and report organization
 - **PDF Export**: Automatically export markdown reports to professionally styled PDF documents
@@ -106,6 +107,15 @@ python -m yaft.cli list-plugins --all
 
 # Get plugin information
 python -m yaft.cli info ZipAnalyzerPlugin
+
+# Update plugins from GitHub repository
+python -m yaft.cli update-plugins
+
+# Check for updates only (don't download)
+python -m yaft.cli update-plugins --check-only
+
+# List all available plugins from repository
+python -m yaft.cli list-available-plugins
 
 # Analyze a ZIP file with a plugin (NOTE: use full class name with "Plugin" suffix)
 python -m yaft.cli run ZipAnalyzerPlugin --zip evidence.zip

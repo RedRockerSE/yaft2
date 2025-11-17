@@ -1781,3 +1781,42 @@ class CoreAPI:
             raise ValueError(f"Invalid TOML syntax in profile file: {e}") from e
         except Exception as e:
             raise ValueError(f"Failed to parse profile file: {e}") from e
+
+    # ========================================================================
+    # Plugin Update System
+    # ========================================================================
+
+    def get_plugin_updater(
+        self,
+        repo: str = "RedRockerSE/yaft",
+        branch: str = "main",
+        plugins_dir: Path | None = None,
+    ) -> "PluginUpdater":
+        """
+        Get a PluginUpdater instance for managing plugin updates.
+
+        Args:
+            repo: GitHub repository (owner/repo format)
+            branch: Git branch to use
+            plugins_dir: Custom plugins directory (default: plugins/)
+
+        Returns:
+            PluginUpdater instance
+
+        Example:
+            updater = self.core_api.get_plugin_updater()
+            result = updater.check_for_updates()
+            if result.updates_available:
+                updater.download_plugins()
+        """
+        from yaft.core.plugin_updater import PluginUpdater
+
+        if plugins_dir is None:
+            plugins_dir = Path("plugins")
+
+        return PluginUpdater(
+            repo=repo,
+            branch=branch,
+            plugins_dir=plugins_dir,
+            cache_dir=Path(".plugin_cache"),
+        )
