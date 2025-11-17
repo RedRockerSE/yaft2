@@ -1323,7 +1323,7 @@ class CoreAPI:
         """
         try:
             import markdown
-            from weasyprint import HTML
+            from weasyprint import HTML  # type: ignore[import-untyped]
         except ImportError as e:
             error_msg = (
                 "PDF export requires 'markdown' and 'weasyprint' packages. "
