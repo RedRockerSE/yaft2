@@ -53,7 +53,7 @@ YAFT follows a clean, layered architecture:
 
 #### Option 1: Download Pre-built Executable (Recommended)
 
-Download the latest release for your platform from the [Releases page](https://github.com/YOUR_USERNAME/yaft/releases):
+Download the latest release for your platform from the [Releases page](https://github.com/RedRockerSE/yaft2/releases):
 
 - **Windows**: `yaft-windows-x64.exe`
 - **macOS**: `yaft-macos-x64`
