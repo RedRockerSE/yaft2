@@ -178,6 +178,12 @@ class PluginBase(ABC):
 - **Configuration**: Path management
 - **Shared Data**: Inter-plugin communication
 - **User Input**: Interactive prompts
+- **ZIP File Handling**: Comprehensive ZIP operations for forensic analysis
+- **Format Detection**: Automatic detection of Cellebrite/GrayKey formats
+- **Data Parsing**: Built-in plist, XML, and SQLite parsing
+- **Case Management**: Forensic case identifier tracking and organization
+- **Report Generation**: Unified markdown/PDF report system
+- **Plugin Updates**: Automatic plugin update and download system
 
 **Why Rich Console?**
 - Beautiful, consistent output

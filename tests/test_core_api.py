@@ -597,8 +597,8 @@ def test_validate_case_id(core_api):
 def test_validate_evidence_id(core_api):
     """Test Evidence ID validation."""
     # Valid formats - any alphanumeric string
-    assert core_api.validate_evidence_id("BG123456-1") is True
-    assert core_api.validate_evidence_id("bg123456-1") is True  # Lowercase allowed
+    assert core_api.validate_evidence_id("EV123456-1") is True
+    assert core_api.validate_evidence_id("EV123456-1") is True  # Lowercase allowed
     assert core_api.validate_evidence_id("Evidence1") is True
     assert core_api.validate_evidence_id("Ev-001") is True
     assert core_api.validate_evidence_id("ITEM_ABC-123") is True
@@ -606,40 +606,40 @@ def test_validate_evidence_id(core_api):
 
     # Invalid formats
     assert core_api.validate_evidence_id("") is False  # Empty string
-    assert core_api.validate_evidence_id("BG 123456") is False  # Spaces not allowed
-    assert core_api.validate_evidence_id("BG@123456") is False  # Special chars not allowed
+    assert core_api.validate_evidence_id("EV 123456") is False  # Spaces not allowed
+    assert core_api.validate_evidence_id("EV@123456") is False  # Special chars not allowed
 
 
 def test_set_and_get_case_identifiers(core_api):
     """Test setting and getting case identifiers."""
-    core_api.set_case_identifiers("examiner01", "CASE2024-01", "BG999888-7")
+    core_api.set_case_identifiers("examiner01", "CASE2024-01", "EV999888-7")
 
     examiner, case, evidence = core_api.get_case_identifiers()
 
     assert examiner == "examiner01"
     assert case == "CASE2024-01"
-    assert evidence == "BG999888-7"
+    assert evidence == "EV999888-7"
 
 
 def test_set_case_identifiers_normalization(core_api):
     """Test case identifier storage (no normalization)."""
     # Identifiers should be stored as-is (no uppercasing)
-    core_api.set_case_identifiers("john_doe", "case2024-01", "bg999888-7")
+    core_api.set_case_identifiers("john_doe", "case2024-01", "EV999888-7")
 
     examiner, case, evidence = core_api.get_case_identifiers()
 
     assert examiner == "john_doe"
     assert case == "case2024-01"  # Stored as-is
-    assert evidence == "bg999888-7"  # Stored as-is
+    assert evidence == "EV999888-7"  # Stored as-is
 
 
 def test_set_case_identifiers_invalid(core_api):
     """Test setting invalid case identifiers raises errors."""
     with pytest.raises(ValueError, match="Invalid Examiner ID"):
-        core_api.set_case_identifiers("x", "CASE2024-01", "BG123456-1")
+        core_api.set_case_identifiers("x", "CASE2024-01", "EV123456-1")
 
     with pytest.raises(ValueError, match="Invalid Case ID"):
-        core_api.set_case_identifiers("examiner01", "invalid@case", "BG123456-1")  # @ not allowed
+        core_api.set_case_identifiers("examiner01", "invalid@case", "EV123456-1")  # @ not allowed
 
     with pytest.raises(ValueError, match="Invalid Evidence ID"):
         core_api.set_case_identifiers("examiner01", "CASE2024-01", "invalid@ev")  # @ not allowed
@@ -647,18 +647,18 @@ def test_set_case_identifiers_invalid(core_api):
 
 def test_get_case_output_dir_with_identifiers(core_api):
     """Test getting case-based output directory."""
-    core_api.set_case_identifiers("examiner01", "CASE2024-01", "BG999888-7")
+    core_api.set_case_identifiers("examiner01", "CASE2024-01", "EV999888-7")
 
     # Base directory
     base_dir = core_api.get_case_output_dir()
-    assert base_dir.parts[-3:] == ("yaft_output", "CASE2024-01", "BG999888-7")
+    assert base_dir.parts[-3:] == ("yaft_output", "CASE2024-01", "EV999888-7")
 
     # With subdirectory
     reports_dir = core_api.get_case_output_dir("reports")
-    assert reports_dir.parts[-4:] == ("yaft_output", "CASE2024-01", "BG999888-7", "reports")
+    assert reports_dir.parts[-4:] == ("yaft_output", "CASE2024-01", "EV999888-7", "reports")
 
     ios_dir = core_api.get_case_output_dir("ios_extractions")
-    assert ios_dir.parts[-4:] == ("yaft_output", "CASE2024-01", "BG999888-7", "ios_extractions")
+    assert ios_dir.parts[-4:] == ("yaft_output", "CASE2024-01", "EV999888-7", "ios_extractions")
 
 
 def test_get_case_output_dir_without_identifiers(core_api):

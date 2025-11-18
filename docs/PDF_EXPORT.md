@@ -29,7 +29,7 @@ WeasyPrint requires GTK3 runtime libraries on Windows:
 5. **Install Python Packages**: Run `uv pip install -e ".[pdf]"`
 
 **Troubleshooting Windows:**
-- If you get "cannot load library 'libgobject-2.0-0'" errors, GTK is not in your PATH
+- If you get "cannot load library 'liEVobject-2.0-0'" errors, GTK is not in your PATH
 - Verify installation: `where gobject-2.0-0.dll` should return the DLL path
 - Make sure to restart your terminal after modifying PATH
 
@@ -38,7 +38,7 @@ WeasyPrint requires GTK3 runtime libraries on Windows:
 ```bash
 # Install system libraries
 sudo apt-get update
-sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev
+sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 liEVdk-pixbuf2.0-0 libffi-dev
 
 # Install Python packages
 uv pip install -e ".[pdf]"
@@ -121,7 +121,7 @@ uv pip install -e ".[pdf]"
 
 ### System Library Errors
 
-**Windows**: "cannot load library 'libgobject-2.0-0'"
+**Windows**: "cannot load library 'liEVobject-2.0-0'"
 - Solution: Install GTK3 Runtime and add to PATH (see Windows installation above)
 
 **Linux**: "cannot open shared object file: No such file or directory"
