@@ -277,7 +277,7 @@ YAFT includes built-in support for forensic case management. When running plugin
 **Case Identifier Formats:**
 - **Examiner ID**: User/investigator identifier (alphanumeric with underscores/hyphens, 2-50 characters - e.g., `john_doe`, `examiner-123`)
 - **Case ID**: Case number (any alphanumeric string - e.g., `CASE2024-01`, `Case123`, `MyCase`)
-- **Evidence ID**: Evidence number (any alphanumeric string - e.g., `BG123456-1`, `Evidence1`, `Ev-001`)
+- **Evidence ID**: Evidence number (any alphanumeric string - e.g., `EV123456-1`, `Evidence1`, `Ev-001`)
 
 **Example Usage:**
 ```bash
@@ -287,7 +287,7 @@ python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip
 # You will be prompted:
 # Examiner ID (alphanumeric, 2-50 chars): john_doe
 # Case ID (alphanumeric): CASE2024-01
-# Evidence ID (alphanumeric): BG123456-1
+# Evidence ID (alphanumeric): EV123456-1
 ```
 
 **Output Organization:**
@@ -391,17 +391,17 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     # Validation methods (returns True/False)
     is_valid = self.core_api.validate_examiner_id("john_doe")
     is_valid = self.core_api.validate_case_id("CASE2024-01")
-    is_valid = self.core_api.validate_evidence_id("BG123456-1")
+    is_valid = self.core_api.validate_evidence_id("EV123456-1")
 
     # Setting case identifiers programmatically
-    self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "BG123456-1")
+    self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "EV123456-1")
 
     # Getting case identifiers
     examiner, case, evidence = self.core_api.get_case_identifiers()
 
     # Get case-based output directory (automatically uses case identifiers if set)
     output_dir = self.core_api.get_case_output_dir("ios_extractions")
-    # Returns: yaft_output/CASE2024-01/BG123456-1/ios_extractions
+    # Returns: yaft_output/CASE2024-01/EV123456-1/ios_extractions
 
     # ZIP file handling (forensic analysis)
     zip_path = self.core_api.get_current_zip()
@@ -458,7 +458,7 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
         sections=sections,
         metadata={"Status": "Complete"}
     )
-    # Reports are saved to: yaft_output/CASE2024-01/BG123456-1/reports/
+    # Reports are saved to: yaft_output/CASE2024-01/EV123456-1/reports/
 
     # User input
     name = self.core_api.get_user_input("Enter your name")

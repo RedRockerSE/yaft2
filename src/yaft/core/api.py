@@ -239,7 +239,7 @@ class CoreAPI:
     def validate_evidence_id(self, value: str) -> bool:
         """
         Validate Evidence ID format: any alphanumeric string.
-        Examples: BG123456-1, EV123456-1, ITEM1234-01, Evidence1, Ev-001
+        Examples: EV123456-1, EV123456-1, ITEM1234-01, Evidence1, Ev-001
 
         Args:
             value: Evidence ID to validate
@@ -282,7 +282,7 @@ class CoreAPI:
             evidence_id = self.console.input("[bold cyan]?[/bold cyan] Evidence ID (alphanumeric): ").strip()
             if self.validate_evidence_id(evidence_id):
                 break
-            self.console.print("[bold red]✗[/bold red] Invalid format. Use alphanumeric characters, underscores, or hyphens (e.g., BG123456-1, Evidence1, Ev-001)")
+            self.console.print("[bold red]✗[/bold red] Invalid format. Use alphanumeric characters, underscores, or hyphens (e.g., EV123456-1, Evidence1, Ev-001)")
 
         # Store identifiers
         self._examiner_id = examiner_id

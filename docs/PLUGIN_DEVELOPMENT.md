@@ -236,6 +236,8 @@ def cleanup(self) -> None:
 
 ## Using Core API
 
+The Core API provides a comprehensive set of methods for plugin development. This section covers all available functionality.
+
 ### Logging
 
 ```python
@@ -329,6 +331,432 @@ self.core_api.console.print(panel)
 
 # Rich formatting
 self.core_api.console.print("[bold blue]Bold blue text[/bold blue]")
+```
+
+### ZIP File Operations
+
+YAFT provides comprehensive ZIP file handling for forensic analysis. All ZIP operations are managed by the Core API.
+
+#### Loading and Basic Operations
+
+```python
+from pathlib import Path
+
+def execute(self, *args, **kwargs) -> Any:
+    # Check if ZIP is loaded
+    current_zip = self.core_api.get_current_zip()
+    if not current_zip:
+        self.core_api.print_error("No ZIP file loaded")
+        return None
+
+    # List all files in ZIP
+    files = self.core_api.list_zip_contents()
+    # Returns: List[str] of all file paths in ZIP
+
+    # Display formatted table of ZIP contents
+    self.core_api.display_zip_contents()
+
+    # Get ZIP file statistics
+    stats = self.core_api.get_zip_statistics()
+    # Returns: dict with 'total_files', 'total_size', 'compression_ratio'
+```
+
+#### Reading Files from ZIP
+
+```python
+# Read file as bytes
+content = self.core_api.read_zip_file("path/to/file.bin")
+# Returns: bytes
+
+# Read file as text
+text = self.core_api.read_zip_file_text("path/to/file.txt")
+# Returns: str (UTF-8 decoded)
+
+# Check if file exists in ZIP
+if self.core_api.file_exists_in_zip("path/to/file"):
+    data = self.core_api.read_zip_file("path/to/file")
+```
+
+#### Extracting Files from ZIP
+
+```python
+from pathlib import Path
+
+# Extract single file
+output_dir = Path("extracted_files")
+self.core_api.extract_zip_file("file.txt", output_dir)
+# Extracts to: output_dir/file.txt
+
+# Extract all files
+self.core_api.extract_all_zip(output_dir)
+# Extracts all files maintaining directory structure
+```
+
+#### Searching ZIP Files
+
+```python
+# Find files with wildcard patterns
+db_files = self.core_api.find_files_in_zip("*.db")
+# Returns: List[str] of all .db files
+
+plist_files = self.core_api.find_files_in_zip("*.plist")
+# Returns: List[str] of all .plist files
+
+# Complex pattern matching
+call_logs = self.core_api.find_files_in_zip("**/CallHistory.storedata")
+# Returns: List[str] matching pattern (supports ** for recursive search)
+
+# Find specific database
+tcc_db = self.core_api.find_files_in_zip("**/TCC/TCC.db")
+if tcc_db:
+    rows = self.core_api.query_sqlite_from_zip(tcc_db[0], "SELECT * FROM access")
+```
+
+**Supported Patterns:**
+- `*.ext` - All files with extension
+- `**/filename` - Recursive search for filename
+- `prefix*` - Files starting with prefix
+- `*suffix` - Files ending with suffix
+- `**/*.ext` - Recursive search for all files with extension
+
+### Forensic ZIP Format Detection
+
+YAFT automatically detects the extraction format from forensic tools (Cellebrite, GrayKey) and handles path prefixes.
+
+```python
+def execute(self, *args, **kwargs) -> Any:
+    # Detect ZIP format
+    extraction_type, zip_prefix = self.core_api.detect_zip_format()
+    # Returns: ("cellebrite_ios", "filesystem1/") or ("graykey_android", "") etc.
+
+    self.core_api.print_info(f"Detected format: {extraction_type}")
+    self.core_api.print_info(f"Path prefix: {zip_prefix or 'none'}")
+
+    # Normalize paths for ZIP access
+    normalized_path = self.core_api.normalize_zip_path(
+        "data/data/com.example.app/databases/app.db",
+        zip_prefix
+    )
+    # Cellebrite Android: "Dump/data/data/com.example.app/databases/app.db"
+    # GrayKey Android: "data/data/com.example.app/databases/app.db"
+
+    # Read file with normalized path
+    content = self.core_api.read_zip_file(normalized_path)
+```
+
+**Supported Formats:**
+
+| Format Type | OS | Tool | Root Folders | Path Prefix |
+|-------------|-----|------|--------------|-------------|
+| `cellebrite_ios` | iOS | Cellebrite | `filesystem1/` or `filesystem/` | `filesystem1/` or `filesystem/` |
+| `cellebrite_android` | Android | Cellebrite | `Dump/` and `extra/` | `Dump/` |
+| `cellebrite_android` | Android | Cellebrite (legacy) | `fs/` | `fs/` |
+| `graykey_ios` | iOS | GrayKey | `private/`, `System/`, `Library/`, etc. | (no prefix) |
+| `graykey_android` | Android | GrayKey | `apex/`, `data/`, `system/`, `cache/`, etc. | (no prefix) |
+| `unknown` | Any | Unknown | Various | (no prefix) |
+
+### OS Detection
+
+```python
+# Detect operating system from ZIP structure
+os_type = self.core_api.detect_os_from_zip()
+# Returns: "ios", "android", or "unknown"
+
+if os_type == "ios":
+    # iOS-specific processing
+    plist_data = self.core_api.read_plist_from_zip("System/Library/CoreServices/SystemVersion.plist")
+elif os_type == "android":
+    # Android-specific processing
+    build_prop = self.core_api.read_zip_file_text("system/build.prop")
+```
+
+### Plist Parsing (iOS Forensics)
+
+```python
+# Parse plist from ZIP
+data = self.core_api.read_plist_from_zip("path/to/file.plist")
+# Returns: dict or list (parsed plist content)
+
+# Example: iOS system version
+version_data = self.core_api.read_plist_from_zip(
+    "System/Library/CoreServices/SystemVersion.plist"
+)
+product_version = version_data.get("ProductVersion")
+
+# Or parse plist from bytes
+raw_content = self.core_api.read_zip_file("file.plist")
+data = self.core_api.parse_plist(raw_content)
+```
+
+### XML Parsing (Android Forensics)
+
+```python
+# Parse XML from ZIP
+root = self.core_api.read_xml_from_zip("path/to/file.xml")
+# Returns: xml.etree.ElementTree.Element (root element)
+
+# Example: Android packages.xml
+packages_root = self.core_api.read_xml_from_zip("data/system/packages.xml")
+for package in packages_root.findall(".//package"):
+    name = package.get("name")
+    code_path = package.get("codePath")
+
+# Or parse XML from bytes/string
+content = self.core_api.read_zip_file("file.xml")
+root = self.core_api.parse_xml(content)
+```
+
+### SQLite Database Querying
+
+```python
+# Query database from ZIP (returns list of tuples)
+rows = self.core_api.query_sqlite_from_zip(
+    "path/to/database.db",
+    "SELECT name, value FROM settings WHERE id = ?",
+    params=(123,)
+)
+
+for row in rows:
+    name, value = row
+    print(f"{name}: {value}")
+
+# Query with fallback for schema differences
+rows = self.core_api.query_sqlite_from_zip(
+    "TCC.db",
+    "SELECT service, client, auth_value, last_modified FROM access",
+    fallback_query="SELECT service, client, auth_value, NULL FROM access"
+)
+
+# Query and get results as dictionaries
+dicts = self.core_api.query_sqlite_from_zip_dict(
+    "database.db",
+    "SELECT * FROM apps WHERE bundle_id LIKE ?",
+    params=("com.apple.%",)
+)
+
+for row in dicts:
+    # Access by column name
+    bundle_id = row["bundle_id"]
+    app_name = row["app_name"]
+```
+
+**Benefits:**
+- Automatic temporary file management (created and cleaned up automatically)
+- Support for fallback queries (useful for iOS/Android version differences)
+- No need to import `sqlite3`, `tempfile`, or manage temp directories
+- Consistent error handling
+
+### Case Identifier Management
+
+YAFT provides built-in support for forensic case identifier management. The CLI automatically prompts for case identifiers before plugin execution.
+
+#### Validation Methods
+
+```python
+# Validate examiner ID (alphanumeric with underscores/hyphens, 2-50 chars)
+if self.core_api.validate_examiner_id("john_doe"):
+    self.core_api.print_success("Valid examiner ID")
+
+# Validate case ID (any alphanumeric string)
+if self.core_api.validate_case_id("CASE2024-01"):
+    self.core_api.print_success("Valid case ID")
+
+# Validate evidence ID (any alphanumeric string)
+if self.core_api.validate_evidence_id("EV123456-1"):
+    self.core_api.print_success("Valid evidence ID")
+```
+
+#### Setting and Getting Case Identifiers
+
+```python
+# Set case identifiers programmatically (rarely needed - CLI handles this)
+self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "EV123456-1")
+
+# Get current case identifiers
+examiner, case, evidence = self.core_api.get_case_identifiers()
+# Returns: tuple of (str | None, str | None, str | None)
+
+if case and evidence:
+    self.core_api.print_info(f"Working on case {case}, evidence {evidence}")
+```
+
+#### Case-Based Output Directories
+
+```python
+# Get case-based output directory (recommended for all file outputs)
+output_dir = self.core_api.get_case_output_dir("ios_extractions")
+# With case IDs: yaft_output/CASE2024-01/EV123456-1/ios_extractions
+# Without: yaft_output/ios_extractions
+
+output_dir.mkdir(parents=True, exist_ok=True)
+
+# Write output files to case-organized directory
+json_path = output_dir / "data.json"
+self.core_api.write_file(json_path, json.dumps(data, indent=2))
+```
+
+**Best Practice:** Always use `get_case_output_dir()` for plugin outputs to ensure proper organization.
+
+### Report Generation
+
+All plugins should use the unified report generation system for consistent markdown reports.
+
+```python
+# Generate a comprehensive report
+sections = [
+    {
+        "heading": "Executive Summary",
+        "content": "Brief overview of findings...",
+        "level": 2,  # Optional, default 2
+    },
+    {
+        "heading": "Key Findings",
+        "content": [
+            "Finding 1: Lorem ipsum",
+            "Finding 2: Dolor sit amet",
+            "Finding 3: Consectetur adipiscing",
+        ],
+        "style": "list",  # Options: text, list, table, code
+    },
+    {
+        "heading": "Statistics",
+        "content": {
+            "Total Files Analyzed": 1543,
+            "Suspicious Items": 12,
+            "Clean Items": 1531,
+            "Analysis Duration": "5.2 seconds",
+        },
+        "style": "table",
+    },
+    {
+        "heading": "Raw Data Sample",
+        "content": '{"example": "json data", "count": 42}',
+        "style": "code",
+    },
+]
+
+metadata = {
+    "Analysis Type": "Forensic ZIP Analysis",
+    "OS Type": "iOS",
+    "Tool Used": "Cellebrite",
+}
+
+report_path = self.core_api.generate_report(
+    plugin_name=self.metadata.name,
+    title="iOS Device Analysis Report",
+    sections=sections,
+    metadata=metadata,
+)
+# Returns: Path to generated markdown report
+
+self.core_api.print_success(f"Report generated: {report_path}")
+```
+
+**Report Features:**
+- Automatic metadata (plugin name, timestamp, source ZIP, case identifiers)
+- Consistent formatting across all plugins
+- Multiple content styles (text, list, table, code)
+- Timestamped filenames (won't overwrite)
+- Standard location: `yaft_output/<case_id>/<evidence_id>/reports/PluginName_YYYYMMDD_HHMMSS.md`
+
+#### PDF Export
+
+```python
+# Enable automatic PDF generation for all reports
+self.core_api.enable_pdf_export(True)
+
+# Generate report (PDF created automatically if enabled)
+report_path = self.core_api.generate_report(
+    plugin_name=self.metadata.name,
+    title="Analysis Report",
+    sections=sections,
+)
+# Creates both: report.md and report.pdf
+
+# Manually convert a markdown file to PDF
+pdf_path = self.core_api.convert_markdown_to_pdf(markdown_path)
+
+# Batch export all generated reports to PDF
+pdf_paths = self.core_api.export_all_reports_to_pdf()
+```
+
+**PDF Features:**
+- Professional styling (blue color scheme, proper typography)
+- Full markdown support (tables, code blocks, lists, headings)
+- A4 page format with margins
+- Graceful degradation if PDF packages aren't installed
+
+### Plugin Update System
+
+Access the plugin update system programmatically to check for and download plugin updates.
+
+```python
+# Get plugin updater instance
+updater = self.core_api.get_plugin_updater(
+    repo="RedRockerSE/yaft2",
+    branch="main",
+    plugins_dir=None,  # Uses default plugins/ directory
+)
+
+# Check for updates
+check_result = updater.check_for_updates(force=False)
+
+if check_result.updates_available:
+    self.core_api.print_info(f"New plugins: {check_result.new_plugins}")
+    self.core_api.print_info(f"Updated plugins: {check_result.updated_plugins}")
+
+    # Download updates
+    download_result = updater.download_plugins(
+        plugin_list=check_result.new_plugins + check_result.updated_plugins,
+        verify=True,
+        backup=True,
+    )
+
+    if download_result.success:
+        self.core_api.print_success(f"Downloaded: {download_result.downloaded}")
+    else:
+        self.core_api.print_error(f"Failed: {download_result.failed}")
+
+# List available plugins from manifest
+available = updater.list_available_plugins()
+for plugin in available:
+    print(f"{plugin['name']} v{plugin['version']} - {plugin['description']}")
+
+# Update all plugins at once
+result = updater.update_all_plugins(force=False, auto_download=True)
+```
+
+### Plugin Profiles
+
+Load and use plugin profiles to run multiple plugins together.
+
+```python
+from pathlib import Path
+
+# Load a plugin profile
+profile = self.core_api.load_plugin_profile(
+    Path("profiles/ios_full_analysis.toml")
+)
+
+# Access profile properties
+self.core_api.print_info(f"Profile: {profile.name}")
+self.core_api.print_info(f"Description: {profile.description}")
+
+# Get list of plugin class names
+for plugin_name in profile.plugins:
+    self.core_api.print_info(f"  - {plugin_name}")
+```
+
+**Profile Structure:**
+```toml
+[profile]
+name = "Profile Name"
+description = "Optional description"
+
+plugins = [
+    "PluginClassName1",
+    "PluginClassName2",
+]
 ```
 
 ## Best Practices
