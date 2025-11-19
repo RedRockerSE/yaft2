@@ -149,7 +149,7 @@ def test_plugin_metadata(plugin):
     metadata = plugin.metadata
 
     assert metadata.name == "iOSDeviceInfoExtractor"
-    assert metadata.version == "1.0.0"
+    assert metadata.version == "1.1.0"
     assert "ios" in metadata.target_os
     assert metadata.enabled is True
     assert "device metadata" in metadata.description.lower()
@@ -320,7 +320,7 @@ def test_export_to_json(plugin, core_api, mock_ios_zip_cellebrite, tmp_path):
         data = json.load(f)
 
     assert data["plugin_name"] == "iOSDeviceInfoExtractor"
-    assert data["plugin_version"] == "1.0.0"
+    assert data["plugin_version"] == "1.1.0"
     assert "data" in data  # CoreAPI uses "data" key for plugin data
     assert data["extraction_source"] == "cellebrite_ios"
 
