@@ -131,53 +131,87 @@ class iOSDeviceInfoExtractorPlugin(PluginBase):
 
     def _extract_system_version(self) -> None:
         """Extract iOS system version information."""
-        plist_path = 'System/Library/CoreServices/SystemVersion.plist'
+        # Try multiple possible file patterns
+        patterns = [
+            'SystemVersion.plist',
+            'LastBuildInfo.plist',
+        ]
 
-        try:
-            data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
+        data = None
+        found_file = None
 
+        for pattern in patterns:
+            files = self.core_api.find_files_in_zip(pattern)
+            if files:
+                for file_path in files:
+                    try:
+                        data = self.core_api.read_plist_from_zip(file_path)
+                        found_file = file_path
+                        break
+                    except Exception:
+                        continue
+            if data:
+                break
+
+        if data:
             self.metadata_extracted['system_version'] = {
                 'product_version': data.get('ProductVersion'),
                 'product_build_version': data.get('ProductBuildVersion'),
                 'product_name': data.get('ProductName'),
             }
-        except KeyError:
+            self.core_api.log_info(f"Extracted system version from: {found_file}")
+        else:
             self.errors.append({
-                'source': plist_path,
-                'error': 'SystemVersion.plist not found in ZIP'
+                'source': 'SystemVersion.plist/LastBuildInfo.plist',
+                'error': 'System version plist not found in ZIP'
             })
-            self.core_api.log_warning("SystemVersion.plist not found")
-        except Exception as e:
-            self.errors.append({'source': plist_path, 'error': str(e)})
-            self.core_api.log_error(f"Error parsing SystemVersion.plist: {e}")
+            self.core_api.log_warning("System version plist not found")
 
     def _extract_device_identifiers(self) -> None:
         """Extract device serial number, UDID, and activation state."""
-        plist_paths = [
-            'private/var/containers/Shared/SystemGroup/systemgroup.com.apple.mobileactivationd/Library/internal/data_ark.plist',
-            'private/var/root/Library/Lockdown/data_ark.plist',
+        # Search for data_ark.plist which contains device identifiers
+        patterns = [
+            'data_ark.plist',
+            '*mobileactivationd*data_ark.plist',
         ]
 
-        for plist_path in plist_paths:
+        for pattern in patterns:
+            files = self.core_api.find_files_in_zip(pattern)
+            for file_path in files:
+                try:
+                    data = self.core_api.read_plist_from_zip(file_path)
+
+                    self.metadata_extracted['device_identifiers'] = {
+                        'serial_number': data.get('SerialNumber'),
+                        'unique_device_id': data.get('UniqueDeviceID'),
+                        'activation_state': data.get('ActivationState'),
+                        'device_name': data.get('DeviceName'),
+                    }
+
+                    # If we successfully extracted data, return
+                    if self.metadata_extracted['device_identifiers'].get('serial_number'):
+                        self.core_api.log_info(f"Extracted device identifiers from: {file_path}")
+                        return
+
+                except Exception as e:
+                    self.core_api.log_error(f"Error parsing {file_path}: {e}")
+                    continue
+
+        # Also try to extract from commcenter plist which may have activation state
+        commcenter_files = self.core_api.find_files_in_zip('com.apple.commcenter.device_specific_nobackup.plist')
+        if commcenter_files:
             try:
-                data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
+                data = self.core_api.read_plist_from_zip(commcenter_files[0])
+                if 'device_identifiers' not in self.metadata_extracted:
+                    self.metadata_extracted['device_identifiers'] = {}
 
-                self.metadata_extracted['device_identifiers'] = {
-                    'serial_number': data.get('SerialNumber'),
-                    'unique_device_id': data.get('UniqueDeviceID'),
-                    'activation_state': data.get('ActivationState'),
-                    'device_name': data.get('DeviceName'),
-                }
+                # Extract activation state if available
+                if data.get('ActivationState'):
+                    self.metadata_extracted['device_identifiers']['activation_state'] = data.get('ActivationState')
 
-                # If we successfully extracted data, break
-                if self.metadata_extracted['device_identifiers'].get('serial_number'):
-                    return
-
-            except KeyError:
-                continue
+                self.core_api.log_info(f"Extracted additional device info from: {commcenter_files[0]}")
             except Exception as e:
-                self.core_api.log_error(f"Error parsing {plist_path}: {e}")
-                continue
+                self.core_api.log_error(f"Error parsing commcenter plist: {e}")
 
         if 'device_identifiers' not in self.metadata_extracted:
             self.errors.append({
@@ -187,27 +221,57 @@ class iOSDeviceInfoExtractorPlugin(PluginBase):
 
     def _extract_cellular_info(self) -> None:
         """Extract IMEI, MEID, ICCID information."""
-        plist_paths = [
-            'private/var/wireless/Library/Preferences/com.apple.commcenter.device_specific_nobackup.plist',
-            'private/var/wireless/Library/Databases/CellularUsage.db',
-        ]
+        # Search for commcenter device specific plist
+        files = self.core_api.find_files_in_zip('com.apple.commcenter.device_specific_nobackup.plist')
 
-        # Try plist first
-        plist_path = plist_paths[0]
-        try:
-            data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
+        if files:
+            try:
+                data = self.core_api.read_plist_from_zip(files[0])
 
-            self.metadata_extracted['cellular_info'] = {
-                'imei': data.get('kCTIMEI') or data.get('IMEI'),
-                'meid': data.get('kCTMEID') or data.get('MEID'),
-                'iccid': data.get('kCTICCID') or data.get('ICCID'),
-            }
-            return
-        except (KeyError, Exception) as e:
-            self.core_api.log_warning(f"Could not extract from {plist_path}: {e}")
+                # Try multiple key names for IMEI (different iOS versions use different keys)
+                imei = (
+                    data.get('kCTIMEI') or
+                    data.get('IMEI') or
+                    data.get('imeis') or  # Newer iOS versions use 'imeis'
+                    data.get('kEnableIMEI')
+                )
 
-        # If plist failed, try database
-        # (Database extraction would require more complex logic)
+                # Handle imeis which may be a string containing multiple IMEIs
+                if isinstance(imei, str) and '_' in imei:
+                    # Split multiple IMEIs
+                    imei = imei.split('_')[0]
+
+                self.metadata_extracted['cellular_info'] = {
+                    'imei': imei,
+                    'meid': data.get('kCTMEID') or data.get('MEID') or data.get('meid'),
+                    'iccid': data.get('kCTICCID') or data.get('ICCID') or data.get('LastKnownICCID'),
+                    'imsi': data.get('ReportedSubscriberIdentity'),
+                }
+
+                self.core_api.log_info(f"Extracted cellular info from: {files[0]}")
+                return
+            except Exception as e:
+                self.core_api.log_warning(f"Could not extract from {files[0]}: {e}")
+
+        # Try CellularUsage database as fallback
+        db_files = self.core_api.find_files_in_zip('CellularUsage.db')
+        if db_files:
+            try:
+                # Query for subscriber info if available
+                results = self.core_api.query_sqlite_from_zip_dict(
+                    db_files[0],
+                    "SELECT subscriber_id, subscriber_mdn FROM subscriber LIMIT 1"
+                )
+                if results:
+                    if 'cellular_info' not in self.metadata_extracted:
+                        self.metadata_extracted['cellular_info'] = {}
+                    self.metadata_extracted['cellular_info']['subscriber_id'] = results[0].get('subscriber_id')
+                    self.metadata_extracted['cellular_info']['subscriber_mdn'] = results[0].get('subscriber_mdn')
+                    self.core_api.log_info(f"Extracted subscriber info from: {db_files[0]}")
+                    return
+            except Exception as e:
+                self.core_api.log_warning(f"Could not extract from CellularUsage.db: {e}")
+
         self.errors.append({
             'source': 'cellular info',
             'error': 'Could not extract IMEI/MEID/ICCID'
@@ -215,85 +279,184 @@ class iOSDeviceInfoExtractorPlugin(PluginBase):
 
     def _extract_carrier_info(self) -> None:
         """Extract carrier and phone number information."""
-        plist_path = 'private/var/wireless/Library/Preferences/com.apple.commcenter.plist'
+        # First try device_specific_nobackup.plist which has more reliable phone number
+        device_specific_files = self.core_api.find_files_in_zip('com.apple.commcenter.device_specific_nobackup.plist')
+        if device_specific_files:
+            try:
+                data = self.core_api.read_plist_from_zip(device_specific_files[0])
 
-        try:
-            data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
+                self.metadata_extracted['carrier_info'] = {
+                    'phone_number': data.get('ReportedPhoneNumber'),
+                    'operator_name': data.get('OperatorName'),
+                    'carrier_bundle_version': data.get('CarrierBundleVersion'),
+                }
 
-            self.metadata_extracted['carrier_info'] = {
-                'phone_number': data.get('ReportedPhoneNumber'),
-                'operator_name': data.get('OperatorName'),
-                'carrier_bundle_version': data.get('CarrierBundleVersion'),
-            }
-        except (KeyError, Exception) as e:
-            self.errors.append({'source': plist_path, 'error': str(e)})
-            self.core_api.log_warning(f"Could not extract carrier info: {e}")
+                self.core_api.log_info(f"Extracted carrier info from: {device_specific_files[0]}")
+
+                # If we got a phone number, we're done
+                if self.metadata_extracted['carrier_info'].get('phone_number'):
+                    return
+            except Exception as e:
+                self.core_api.log_warning(f"Could not extract from device_specific_nobackup.plist: {e}")
+
+        # Try commcenter.plist as fallback
+        commcenter_files = self.core_api.find_files_in_zip('com.apple.commcenter.plist')
+        if commcenter_files:
+            try:
+                data = self.core_api.read_plist_from_zip(commcenter_files[0])
+
+                if 'carrier_info' not in self.metadata_extracted:
+                    self.metadata_extracted['carrier_info'] = {}
+
+                # Update with any additional info
+                if not self.metadata_extracted['carrier_info'].get('phone_number'):
+                    # Try multiple phone number keys
+                    phone = None
+                    for key in ['PhoneNumber', 'ReportedPhoneNumber']:
+                        if data.get(key):
+                            phone = data.get(key)
+                            break
+                    # Also check nested com.apple.carrier_1
+                    carrier_data = data.get('com.apple.carrier_1', {})
+                    if isinstance(carrier_data, dict):
+                        phone = phone or carrier_data.get('PhoneNumber')
+
+                    self.metadata_extracted['carrier_info']['phone_number'] = phone
+
+                if not self.metadata_extracted['carrier_info'].get('operator_name'):
+                    self.metadata_extracted['carrier_info']['operator_name'] = data.get('OperatorName')
+
+                # Extract last known info
+                self.metadata_extracted['carrier_info']['last_known_iccid'] = data.get('LastKnownICCID')
+                self.metadata_extracted['carrier_info']['last_known_serving_mcc'] = data.get('LastKnownServingMcc')
+                self.metadata_extracted['carrier_info']['last_known_serving_mnc'] = data.get('LastKnownServingMnc')
+
+                self.core_api.log_info(f"Extracted additional carrier info from: {commcenter_files[0]}")
+                return
+            except Exception as e:
+                self.core_api.log_warning(f"Could not extract from commcenter.plist: {e}")
+
+        if 'carrier_info' not in self.metadata_extracted:
+            self.errors.append({
+                'source': 'carrier info',
+                'error': 'Could not find carrier info files'
+            })
 
     def _extract_icloud_accounts(self) -> None:
         """Extract iCloud account information from Accounts database."""
-        db_path = 'private/var/mobile/Library/Accounts/Accounts3.sqlite'
+        # Search for Accounts database
+        db_files = self.core_api.find_files_in_zip('Accounts3.sqlite')
 
-        try:
-            query = """
-                SELECT
-                    ZACCOUNTTYPE.ZACCOUNTTYPEDESCRIPTION as account_type,
-                    ZACCOUNT.ZUSERNAME as username,
-                    datetime(ZACCOUNT.ZDATE + 978307200, 'unixepoch') as date_added
-                FROM ZACCOUNT
-                LEFT JOIN ZACCOUNTTYPE ON ZACCOUNT.ZACCOUNTTYPE = ZACCOUNTTYPE.Z_PK
-            """
+        if not db_files:
+            # Try alternate names
+            db_files = self.core_api.find_files_in_zip('*Accounts*.sqlite')
 
-            results = self.core_api.query_sqlite_from_zip_dict(
-                self._normalize_path(db_path), query
-            )
+        if db_files:
+            try:
+                query = """
+                    SELECT
+                        ZACCOUNTTYPE.ZACCOUNTTYPEDESCRIPTION as account_type,
+                        ZACCOUNT.ZUSERNAME as username,
+                        datetime(ZACCOUNT.ZDATE + 978307200, 'unixepoch') as date_added
+                    FROM ZACCOUNT
+                    LEFT JOIN ZACCOUNTTYPE ON ZACCOUNT.ZACCOUNTTYPE = ZACCOUNTTYPE.Z_PK
+                """
 
-            self.metadata_extracted['accounts'] = results
+                results = self.core_api.query_sqlite_from_zip_dict(
+                    db_files[0], query
+                )
 
-        except (KeyError, Exception) as e:
-            self.errors.append({'source': db_path, 'error': str(e)})
-            self.core_api.log_warning(f"Could not extract iCloud accounts: {e}")
+                self.metadata_extracted['accounts'] = results
+                self.core_api.log_info(f"Extracted accounts from: {db_files[0]}")
+
+            except Exception as e:
+                self.errors.append({'source': db_files[0], 'error': str(e)})
+                self.core_api.log_warning(f"Could not extract iCloud accounts: {e}")
+        else:
+            self.errors.append({
+                'source': 'Accounts3.sqlite',
+                'error': 'Accounts database not found in ZIP'
+            })
 
     def _extract_backup_info(self) -> None:
         """Extract iTunes/Finder backup information."""
-        plist_path = 'private/var/mobile/Library/Preferences/com.apple.MobileBackup.plist'
+        # Search for MobileBackup plist
+        files = self.core_api.find_files_in_zip('com.apple.MobileBackup.plist')
 
-        try:
-            data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
+        if files:
+            try:
+                data = self.core_api.read_plist_from_zip(files[0])
 
-            self.metadata_extracted['backup_info'] = {
-                'last_backup_date': data.get('LastBackupDate'),
-                'backup_computer_name': data.get('BackupComputerName'),
-                'backup_computer': data.get('BackupComputer'),
-            }
-        except (KeyError, Exception) as e:
-            self.errors.append({'source': plist_path, 'error': str(e)})
-            self.core_api.log_warning(f"Could not extract backup info: {e}")
+                self.metadata_extracted['backup_info'] = {
+                    'last_backup_date': data.get('LastBackupDate'),
+                    'backup_computer_name': data.get('BackupComputerName'),
+                    'backup_computer': data.get('BackupComputer'),
+                }
+
+                self.core_api.log_info(f"Extracted backup info from: {files[0]}")
+            except Exception as e:
+                self.errors.append({'source': files[0], 'error': str(e)})
+                self.core_api.log_warning(f"Could not extract backup info: {e}")
+        else:
+            self.errors.append({
+                'source': 'com.apple.MobileBackup.plist',
+                'error': 'MobileBackup plist not found in ZIP'
+            })
 
     def _extract_timezone_locale(self) -> None:
         """Extract timezone and locale settings."""
-        plist_path = 'private/var/mobile/Library/Preferences/.GlobalPreferences.plist'
+        # Search for GlobalPreferences plist
+        files = self.core_api.find_files_in_zip('.GlobalPreferences.plist')
 
-        try:
-            data = self.core_api.read_plist_from_zip(self._normalize_path(plist_path))
+        if not files:
+            # Try without the dot prefix
+            files = self.core_api.find_files_in_zip('*GlobalPreferences.plist')
 
-            self.metadata_extracted['timezone_locale'] = {
-                'locale': data.get('AppleLocale'),
-                'languages': data.get('AppleLanguages'),
-                'keyboard': data.get('AppleKeyboards'),
-            }
-        except (KeyError, Exception) as e:
-            self.errors.append({'source': plist_path, 'error': str(e)})
-            self.core_api.log_warning(f"Could not extract timezone/locale: {e}")
+        if files:
+            try:
+                data = self.core_api.read_plist_from_zip(files[0])
 
-        # Try to get timezone from another source
-        tz_plist = 'private/var/mobile/Library/Preferences/com.apple.preferences.datetime.plist'
-        try:
-            data = self.core_api.read_plist_from_zip(self._normalize_path(tz_plist))
-            if 'timezone_locale' not in self.metadata_extracted:
-                self.metadata_extracted['timezone_locale'] = {}
-            self.metadata_extracted['timezone_locale']['timezone'] = data.get('timezone')
-        except (KeyError, Exception):
-            pass
+                self.metadata_extracted['timezone_locale'] = {
+                    'locale': data.get('AppleLocale'),
+                    'languages': data.get('AppleLanguages'),
+                    'keyboard': data.get('AppleKeyboards'),
+                }
+
+                self.core_api.log_info(f"Extracted locale settings from: {files[0]}")
+            except Exception as e:
+                self.errors.append({'source': files[0], 'error': str(e)})
+                self.core_api.log_warning(f"Could not extract timezone/locale: {e}")
+        else:
+            self.errors.append({
+                'source': '.GlobalPreferences.plist',
+                'error': 'GlobalPreferences plist not found in ZIP'
+            })
+
+        # Try to get timezone from datetime preferences
+        tz_files = self.core_api.find_files_in_zip('com.apple.preferences.datetime.plist')
+        if tz_files:
+            try:
+                data = self.core_api.read_plist_from_zip(tz_files[0])
+                if 'timezone_locale' not in self.metadata_extracted:
+                    self.metadata_extracted['timezone_locale'] = {}
+                self.metadata_extracted['timezone_locale']['timezone'] = data.get('timezone')
+                self.core_api.log_info(f"Extracted timezone from: {tz_files[0]}")
+            except Exception:
+                pass
+
+        # Also try com.apple.preferences.plist for additional locale info
+        pref_files = self.core_api.find_files_in_zip('com.apple.preferences.plist')
+        if pref_files:
+            try:
+                data = self.core_api.read_plist_from_zip(pref_files[0])
+                if 'timezone_locale' not in self.metadata_extracted:
+                    self.metadata_extracted['timezone_locale'] = {}
+                # Extract any additional locale/preferences info
+                if data.get('AppleLocale'):
+                    self.metadata_extracted['timezone_locale']['locale'] = data.get('AppleLocale')
+                self.core_api.log_info(f"Extracted additional preferences from: {pref_files[0]}")
+            except Exception:
+                pass
 
     def _format_device_info(self) -> Dict[str, Any]:
         """Format extracted metadata into structured output."""
@@ -320,9 +483,12 @@ class iOSDeviceInfoExtractorPlugin(PluginBase):
             'activation_state': device_ids.get('activation_state'),
             'imei': cellular.get('imei'),
             'meid': cellular.get('meid'),
-            'iccid': cellular.get('iccid'),
+            'iccid': cellular.get('iccid') or carrier.get('last_known_iccid'),
+            'imsi': cellular.get('imsi'),
             'phone_number': carrier.get('phone_number'),
             'carrier': carrier.get('operator_name'),
+            'mcc': carrier.get('last_known_serving_mcc'),
+            'mnc': carrier.get('last_known_serving_mnc'),
             'last_backup_date': str(backup.get('last_backup_date'))
             if backup.get('last_backup_date')
             else None,
@@ -346,23 +512,30 @@ class iOSDeviceInfoExtractorPlugin(PluginBase):
 
         # Add rows with available data
         if device_info.get('ios_version'):
-            table.add_row("iOS Version", device_info['ios_version'])
+            table.add_row("iOS Version", str(device_info['ios_version']))
         if device_info.get('ios_build'):
-            table.add_row("iOS Build", device_info['ios_build'])
+            table.add_row("iOS Build", str(device_info['ios_build']))
         if device_info.get('device_name'):
-            table.add_row("Device Name", device_info['device_name'])
+            table.add_row("Device Name", str(device_info['device_name']))
         if device_info.get('serial_number'):
-            table.add_row("Serial Number", device_info['serial_number'])
+            table.add_row("Serial Number", str(device_info['serial_number']))
         if device_info.get('udid'):
-            table.add_row("UDID", device_info['udid'][:30] + "..." if len(device_info['udid']) > 30 else device_info['udid'])
+            udid_str = str(device_info['udid'])
+            table.add_row("UDID", udid_str[:30] + "..." if len(udid_str) > 30 else udid_str)
         if device_info.get('imei'):
-            table.add_row("IMEI", device_info['imei'])
+            table.add_row("IMEI", str(device_info['imei']))
+        if device_info.get('imsi'):
+            table.add_row("IMSI", str(device_info['imsi']))
+        if device_info.get('iccid'):
+            table.add_row("ICCID", str(device_info['iccid']))
         if device_info.get('phone_number'):
-            table.add_row("Phone Number", device_info['phone_number'])
+            table.add_row("Phone Number", str(device_info['phone_number']))
         if device_info.get('carrier'):
-            table.add_row("Carrier", device_info['carrier'])
+            table.add_row("Carrier", str(device_info['carrier']))
+        if device_info.get('mcc') and device_info.get('mnc'):
+            table.add_row("MCC/MNC", f"{device_info['mcc']}/{device_info['mnc']}")
         if device_info.get('locale'):
-            table.add_row("Locale", device_info['locale'])
+            table.add_row("Locale", str(device_info['locale']))
 
         # iCloud accounts
         if device_info.get('icloud_accounts'):
@@ -424,8 +597,11 @@ class iOSDeviceInfoExtractorPlugin(PluginBase):
             "IMEI": device_info.get('imei'),
             "MEID": device_info.get('meid'),
             "ICCID": device_info.get('iccid'),
+            "IMSI": device_info.get('imsi'),
             "Phone Number": device_info.get('phone_number'),
             "Carrier": device_info.get('carrier'),
+            "MCC": device_info.get('mcc'),
+            "MNC": device_info.get('mnc'),
         }
         sections.append({
             "heading": "Cellular Information",
