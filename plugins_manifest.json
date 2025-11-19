@@ -1,7 +1,7 @@
 {
   "manifest_version": "1.0.0",
-  "last_updated": "2025-11-17T16:28:19.237169+00:00",
-  "repository": "RedRockerSE/yaft",
+  "last_updated": "2025-11-19T18:01:54.579885+00:00",
+  "repository": "RedRockerSE/yaft2",
   "branch": "main",
   "plugins": [
     {
@@ -144,10 +144,10 @@
     {
       "name": "iOSDeviceInfoExtractorPlugin",
       "filename": "ios_device_info_extractor.py",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "description": "Extract comprehensive device metadata from iOS filesystem extractions",
-      "sha256": "172bf76d06a1a99472ce8f44f4bdb9e0ebe1f8706afaecb976ec08801db13d49",
-      "size": 20940,
+      "sha256": "87e5af8b41d5bf3e627eb9a40108ef309b88b276a258ac11f43fbc597ef08bb6",
+      "size": 30078,
       "required": true,
       "os_target": [
         "ios"
