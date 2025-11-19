@@ -149,7 +149,7 @@ def test_plugin_metadata(plugin):
     metadata = plugin.metadata
 
     assert metadata.name == "iOSDeviceInfoExtractor"
-    assert metadata.version == "1.0.0"
+    assert metadata.version == "1.1.0"
     assert "ios" in metadata.target_os
     assert metadata.enabled is True
     assert "device metadata" in metadata.description.lower()
