@@ -5,7 +5,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A plugin-based forensic analysis tool for Python 3.12+ designed for processing and analyzing ZIP archives. Features dynamic plugin loading, beautiful CLI interface, and cross-platform executable builds.
+A plugin-based forensic analysis tool for Python 3.12+ designed for processing and analyzing ZIP archives. Features dynamic plugin loading, beautiful CLI interface, and cross-platform executable builds. YaFT is not a full-fledged forensic solution but a modern plugin-based platform which makes developing forensic-focused plugins fast and easy. Please feel Contribute!
 
 ## Features
 
