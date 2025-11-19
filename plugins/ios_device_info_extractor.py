@@ -37,7 +37,7 @@ class iOSDeviceInfoExtractorPlugin(PluginBase):
     def metadata(self) -> PluginMetadata:
         return PluginMetadata(
             name="iOSDeviceInfoExtractor",
-            version="1.0.0",
+            version="1.1.0",
             description="Extract comprehensive device metadata from iOS filesystem extractions",
             author="YaFT Forensics Team",
             requires_core_version=">=0.1.0",
