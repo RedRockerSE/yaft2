@@ -3,7 +3,7 @@
 [![CI](https://github.com/RedRockerSE/yaft2/actions/workflows/ci.yml/badge.svg)](https://github.com/RedRockerSE/yaft2/actions/workflows/ci.yml)
 [![Release](https://github.com/RedRockerSE/yaft2/actions/workflows/release.yml/badge.svg)](https://github.com/RedRockerSE/yaft2/actions/workflows/release.yml)
 [![Python Version](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.md)
 
 A plugin-based forensic analysis tool for Python 3.12+ designed for processing and analyzing ZIP archives. Features dynamic plugin loading, beautiful CLI interface, and cross-platform executable builds. YaFT is not a full-fledged forensic solution but a modern plugin-based platform which makes developing forensic-focused plugins fast and easy. Please feel free to contribute!
 
