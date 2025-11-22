@@ -1174,6 +1174,337 @@ class CoreAPI:
 
     # ========== SQLite Database Methods ==========
 
+    def query_sqlcipher_from_zip(
+        self,
+        db_path: str,
+        key: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None,
+        cipher_version: int | None = None,
+    ) -> list[tuple]:
+        """
+        Execute SQL query on an encrypted SQLCipher database from the ZIP archive.
+
+        This method extracts the encrypted database to a temporary file, decrypts it
+        using the provided key, executes the query, and returns the results as a list of tuples.
+
+        Args:
+            db_path: Path to encrypted SQLCipher database within the ZIP archive
+            key: Encryption key/password for the database
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails (e.g., for schema differences)
+            cipher_version: Optional SQLCipher version compatibility (1-4). Use this for older databases.
+                           If None, uses default (SQLCipher 4)
+
+        Returns:
+            list[tuple]: Query results as list of tuples
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            ImportError: If sqlcipher3 is not installed
+            Exception: If decryption fails (wrong key, corrupted database)
+
+        Examples:
+            >>> # Query with default SQLCipher version
+            >>> rows = api.query_sqlcipher_from_zip(
+            ...     "private/var/mobile/Containers/Data/Application/.../Documents/database.db",
+            ...     "encryption_key_123",
+            ...     "SELECT * FROM messages WHERE date > ?",
+            ...     params=(1234567890,)
+            ... )
+
+            >>> # Query with SQLCipher v3 compatibility (older iOS apps)
+            >>> rows = api.query_sqlcipher_from_zip(
+            ...     "databases/whatsapp.db",
+            ...     "my_key",
+            ...     "SELECT * FROM chat",
+            ...     cipher_version=3
+            ... )
+        """
+        try:
+            from sqlcipher3 import dbapi2 as sqlcipher
+        except ImportError as e:
+            error_msg = (
+                "SQLCipher support requires 'sqlcipher3' package. "
+                "Install with: uv pip install sqlcipher3"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Connect to encrypted database
+            conn = sqlcipher.connect(str(temp_db_path))
+            cursor = conn.cursor()
+
+            # Set encryption key
+            cursor.execute(f"PRAGMA key = '{key}'")
+
+            # Set cipher version compatibility if specified
+            if cipher_version is not None:
+                cursor.execute(f"PRAGMA cipher_compatibility = {cipher_version}")
+
+            # Verify database is accessible (will fail if wrong key)
+            try:
+                cursor.execute("SELECT count(*) FROM sqlite_master")
+                cursor.fetchone()
+            except Exception as e:
+                conn.close()
+                raise ValueError(
+                    f"Failed to decrypt database. Possible causes: wrong key, corrupted database, "
+                    f"or incompatible SQLCipher version. Error: {e}"
+                ) from e
+
+            # Execute the actual query
+            try:
+                cursor.execute(query, params)
+                results: list[tuple] = cursor.fetchall()
+            except sqlcipher.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    results = cursor.fetchall()
+                else:
+                    raise
+
+            conn.close()
+            return results
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
+
+    def query_sqlcipher_from_zip_dict(
+        self,
+        db_path: str,
+        key: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None,
+        cipher_version: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Execute SQL query on an encrypted SQLCipher database from ZIP and return results as dictionaries.
+
+        This method extracts the encrypted database to a temporary file, decrypts it,
+        executes the query, and returns the results as a list of dictionaries with column names as keys.
+
+        Args:
+            db_path: Path to encrypted SQLCipher database within the ZIP archive
+            key: Encryption key/password for the database
+            query: SQL query to execute
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails
+            cipher_version: Optional SQLCipher version compatibility (1-4)
+
+        Returns:
+            list[dict[str, Any]]: Query results as list of dictionaries
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            ImportError: If sqlcipher3 is not installed
+            Exception: If decryption fails
+
+        Examples:
+            >>> # Query WhatsApp messages
+            >>> messages = api.query_sqlcipher_from_zip_dict(
+            ...     "data/data/com.whatsapp/databases/msgstore.db",
+            ...     "encryption_key",
+            ...     "SELECT key_remote_jid, data, timestamp FROM messages ORDER BY timestamp DESC LIMIT 100"
+            ... )
+            >>> for msg in messages:
+            ...     print(f"{msg['timestamp']}: {msg['data']}")
+        """
+        try:
+            from sqlcipher3 import dbapi2 as sqlcipher
+        except ImportError as e:
+            error_msg = (
+                "SQLCipher support requires 'sqlcipher3' package. "
+                "Install with: uv pip install sqlcipher3"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Connect to encrypted database
+            conn = sqlcipher.connect(str(temp_db_path))
+            conn.row_factory = sqlcipher.Row
+            cursor = conn.cursor()
+
+            # Set encryption key
+            cursor.execute(f"PRAGMA key = '{key}'")
+
+            # Set cipher version compatibility if specified
+            if cipher_version is not None:
+                cursor.execute(f"PRAGMA cipher_compatibility = {cipher_version}")
+
+            # Verify database is accessible
+            try:
+                cursor.execute("SELECT count(*) FROM sqlite_master")
+                cursor.fetchone()
+            except Exception as e:
+                conn.close()
+                raise ValueError(
+                    f"Failed to decrypt database. Possible causes: wrong key, corrupted database, "
+                    f"or incompatible SQLCipher version. Error: {e}"
+                ) from e
+
+            # Execute the actual query
+            try:
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                results = [dict(row) for row in rows]
+            except sqlcipher.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    rows = cursor.fetchall()
+                    results = [dict(row) for row in rows]
+                else:
+                    raise
+
+            conn.close()
+            return results
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
+
+    def decrypt_sqlcipher_database(
+        self,
+        db_path: str,
+        key: str,
+        output_path: Path,
+        cipher_version: int | None = None,
+    ) -> Path:
+        """
+        Decrypt a SQLCipher database from ZIP and save as plain SQLite database.
+
+        This method extracts an encrypted database, decrypts it, and exports it as
+        a standard unencrypted SQLite database file. Useful for forensic analysis
+        when you need to use other SQLite tools.
+
+        Args:
+            db_path: Path to encrypted SQLCipher database within the ZIP archive
+            key: Encryption key/password for the database
+            output_path: Path where decrypted SQLite database should be saved
+            cipher_version: Optional SQLCipher version compatibility (1-4)
+
+        Returns:
+            Path: Path to decrypted SQLite database file
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            ImportError: If sqlcipher3 is not installed
+            Exception: If decryption fails
+
+        Examples:
+            >>> # Decrypt WhatsApp database for analysis
+            >>> decrypted_db = api.decrypt_sqlcipher_database(
+            ...     "data/data/com.whatsapp/databases/msgstore.db",
+            ...     "my_encryption_key",
+            ...     Path("yaft_output/decrypted/whatsapp_msgstore.db")
+            ... )
+            >>> # Now you can use standard SQLite tools on decrypted_db
+        """
+        try:
+            from sqlcipher3 import dbapi2 as sqlcipher
+        except ImportError as e:
+            error_msg = (
+                "SQLCipher support requires 'sqlcipher3' package. "
+                "Install with: uv pip install sqlcipher3"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        temp_encrypted_path = None
+        try:
+            # Extract encrypted database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file for encrypted database
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_encrypted_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Ensure output directory exists
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Connect to encrypted database
+            conn = sqlcipher.connect(str(temp_encrypted_path))
+            cursor = conn.cursor()
+
+            # Set encryption key
+            cursor.execute(f"PRAGMA key = '{key}'")
+
+            # Set cipher version compatibility if specified
+            if cipher_version is not None:
+                cursor.execute(f"PRAGMA cipher_compatibility = {cipher_version}")
+
+            # Verify database is accessible
+            try:
+                cursor.execute("SELECT count(*) FROM sqlite_master")
+                cursor.fetchone()
+            except Exception as e:
+                conn.close()
+                raise ValueError(
+                    f"Failed to decrypt database. Possible causes: wrong key, corrupted database, "
+                    f"or incompatible SQLCipher version. Error: {e}"
+                ) from e
+
+            # Export to plaintext SQLite database
+            # SQLCipher 4 uses: ATTACH DATABASE 'plaintext.db' AS plaintext KEY '';
+            # Then: SELECT sqlcipher_export('plaintext');
+            cursor.execute(f"ATTACH DATABASE '{output_path}' AS plaintext KEY ''")
+            cursor.execute("SELECT sqlcipher_export('plaintext')")
+            cursor.execute("DETACH DATABASE plaintext")
+
+            conn.close()
+
+            self.log_info(f"Decrypted database saved to: {output_path}")
+            return output_path
+
+        except Exception as e:
+            self.log_error(f"Failed to decrypt database: {e}")
+            raise
+        finally:
+            # Clean up temp file
+            if temp_encrypted_path and temp_encrypted_path.exists():
+                try:
+                    temp_encrypted_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp encrypted database file: {e}")
+
     def query_sqlite_from_zip(
         self,
         db_path: str,
@@ -1323,7 +1654,7 @@ class CoreAPI:
         """
         try:
             import markdown
-            from weasyprint import HTML  # type: ignore[import-untyped]
+            from weasyprint import HTML  # type: ignore[import-untyped,unused-ignore]
         except ImportError as e:
             error_msg = (
                 "PDF export requires 'markdown' and 'weasyprint' packages. "
