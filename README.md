@@ -379,18 +379,19 @@ The CoreAPI provides useful functionality to plugins:
 
 ```python
 def execute(self, *args: Any, **kwargs: Any) -> Any:
-    # Logging
+    # ========== Logging ==========
     self.core_api.log_info("Information message")
     self.core_api.log_warning("Warning message")
     self.core_api.log_error("Error message")
+    self.core_api.log_debug("Debug message")
 
-    # Colored output
+    # ========== Colored Console Output ==========
     self.core_api.print_success("Success message")
     self.core_api.print_error("Error message")
     self.core_api.print_warning("Warning message")
     self.core_api.print_info("Info message")
 
-    # Case identifier management
+    # ========== Case Identifier Management ==========
     # Validation methods (returns True/False)
     is_valid = self.core_api.validate_examiner_id("john_doe")
     is_valid = self.core_api.validate_case_id("CASE2024-01")
@@ -399,86 +400,207 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     # Setting case identifiers programmatically
     self.core_api.set_case_identifiers("john_doe", "CASE2024-01", "EV123456-1")
 
-    # Getting case identifiers
+    # Getting case identifiers (returns tuple of str | None)
     examiner, case, evidence = self.core_api.get_case_identifiers()
+
+    # Prompt user for case identifiers interactively
+    examiner, case, evidence = self.core_api.prompt_for_case_identifiers()
 
     # Get case-based output directory (automatically uses case identifiers if set)
     output_dir = self.core_api.get_case_output_dir("ios_extractions")
     # Returns: yaft_output/CASE2024-01/EV123456-1/ios_extractions
 
-    # ZIP file handling (forensic analysis)
-    zip_path = self.core_api.get_current_zip()
-    files = self.core_api.list_zip_contents()
-    content = self.core_api.read_zip_file("file.txt")
-    text = self.core_api.read_zip_file_text("file.txt")
-    self.core_api.extract_zip_file("file.txt", Path("output"))
-    self.core_api.extract_all_zip(Path("output"))
+    # ========== ZIP File Handling ==========
+    # Set/load ZIP file
+    self.core_api.set_zip_file(Path("evidence.zip"))
+
+    # Get current ZIP path
+    zip_path = self.core_api.get_current_zip()  # Returns Path | None
+
+    # List ZIP contents
+    files = self.core_api.list_zip_contents()  # Returns list[ZipInfo]
+
+    # Get info about specific file
+    info = self.core_api.get_zip_info("file.txt")  # Returns ZipInfo | None
+
+    # Read files
+    content = self.core_api.read_zip_file("file.txt")  # Returns bytes
+    text = self.core_api.read_zip_file_text("file.txt")  # Returns str
+
+    # Extract files
+    self.core_api.extract_zip_file("file.txt", Path("output"))  # Extract single file
+    self.core_api.extract_all_zip(Path("output"))  # Extract all files
+
+    # Display ZIP contents as formatted table
     self.core_api.display_zip_contents()
 
-    # ZIP file search with wildcards
+    # Close ZIP file
+    self.core_api.close_zip()
+
+    # ========== ZIP File Search ==========
+    # Search with wildcards (* and ?)
     files = self.core_api.find_files_in_zip("*.db")  # Find all databases
     files = self.core_api.find_files_in_zip("*call*.db", search_path="data/data/")  # Find call logs
     files = self.core_api.find_files_in_zip("*.plist", search_path="System/Library/")  # Find plists
+    files = self.core_api.find_files_in_zip("file?.txt", case_sensitive=True)  # Case-sensitive single char
+    files = self.core_api.find_files_in_zip("*.log", max_results=10)  # Limit results
 
-    # Forensic format detection (Cellebrite/GrayKey)
+    # ========== Forensic Format Detection ==========
+    # Detect Cellebrite/GrayKey format
     format_type, prefix = self.core_api.detect_zip_format()
+    # Returns: ("cellebrite_ios"|"cellebrite_android"|"graykey_ios"|"graykey_android"|"unknown", prefix)
+
+    # Normalize paths for ZIP access
     normalized_path = self.core_api.normalize_zip_path("data/data/com.example/app.db", prefix)
 
-    # OS detection (iOS/Android)
-    os_type = self.core_api.get_detected_os()  # Returns ExtractionOS.IOS or ExtractionOS.ANDROID
-    extraction_info = self.core_api.get_extraction_info()  # Includes OS version
+    # ========== OS Detection ==========
+    # Detect OS from ZIP structure
+    os_type = self.core_api.detect_extraction_os()  # Returns ExtractionOS
+    os_type = self.core_api.get_detected_os()  # Returns cached result or detects
 
-    # Plist parsing (iOS forensics)
-    plist_data = self.core_api.read_plist_from_zip("Info.plist")
-    plist_content = self.core_api.parse_plist(raw_bytes)
+    # Get OS version
+    ios_version = self.core_api.get_ios_version()  # Returns str | None
+    android_version = self.core_api.get_android_version()  # Returns str | None
 
-    # XML parsing (Android forensics)
-    xml_root = self.core_api.read_xml_from_zip("packages.xml")
-    xml_content = self.core_api.parse_xml(raw_bytes)
+    # Get comprehensive extraction info
+    info = self.core_api.get_extraction_info()  # Returns dict with os_type, os_version, detection_confidence
 
-    # SQLite querying from ZIP (iOS forensics)
+    # ========== Plist Parsing (iOS) ==========
+    plist_data = self.core_api.read_plist_from_zip("Info.plist")  # Returns Any (usually dict)
+    plist_content = self.core_api.parse_plist(raw_bytes)  # Parse from bytes
+
+    # ========== XML Parsing (Android) ==========
+    xml_root = self.core_api.read_xml_from_zip("packages.xml")  # Returns ElementTree root
+    xml_content = self.core_api.parse_xml(raw_bytes)  # Parse from bytes or str
+
+    # ========== SQLite Querying ==========
+    # Query standard SQLite databases
     rows = self.core_api.query_sqlite_from_zip(
         "database.db",
         "SELECT * FROM table WHERE id = ?",
         params=(123,),
         fallback_query="SELECT * FROM old_table WHERE id = ?"  # Optional fallback for schema changes
-    )
-    # Or get results as dictionaries with column names
+    )  # Returns list[tuple]
+
+    # Get results as dictionaries with column names
     dicts = self.core_api.query_sqlite_from_zip_dict(
         "database.db",
         "SELECT name, value FROM settings"
-    )
+    )  # Returns list[dict[str, Any]]
 
-    # Unified markdown report generation (automatically includes case identifiers)
+    # ========== SQLCipher Encrypted Databases ==========
+    # Query encrypted databases (requires sqlcipher3 package)
+    rows = self.core_api.query_sqlcipher_from_zip(
+        "data/data/com.whatsapp/databases/msgstore.db",
+        "encryption_key",
+        "SELECT * FROM messages WHERE timestamp > ?",
+        params=(1234567890,),
+        fallback_query="SELECT * FROM old_messages WHERE timestamp > ?",
+        cipher_version=3  # Optional: 1-4 for version compatibility
+    )  # Returns list[tuple]
+
+    # Get encrypted database results as dictionaries
+    messages = self.core_api.query_sqlcipher_from_zip_dict(
+        "encrypted.db",
+        "key",
+        "SELECT * FROM messages"
+    )  # Returns list[dict[str, Any]]
+
+    # Decrypt database to plain SQLite file
+    decrypted_path = self.core_api.decrypt_sqlcipher_database(
+        "encrypted.db",
+        "key",
+        Path("yaft_output/decrypted/plain.db"),
+        cipher_version=3  # Optional
+    )  # Returns Path
+
+    # ========== Report Generation ==========
+    # Generate unified markdown reports (automatically includes case identifiers)
     sections = [
         {"heading": "Summary", "content": "Analysis completed"},
         {"heading": "Findings", "content": ["Finding 1", "Finding 2"], "style": "list"},
         {"heading": "Statistics", "content": {"total": 10, "errors": 0}, "style": "table"},
+        {"heading": "Code", "content": "def example():\n    pass", "style": "code"},
     ]
     report_path = self.core_api.generate_report(
         plugin_name="MyPlugin",
         title="Analysis Report",
         sections=sections,
         metadata={"Status": "Complete"}
+    )  # Returns Path - saved to: yaft_output/CASE2024-01/EV123456-1/reports/
+
+    # Save report attachments
+    attachment_path = self.core_api.save_report_attachment(
+        report_dir=output_dir,
+        filename="data.json",
+        content="{'key': 'value'}"
     )
-    # Reports are saved to: yaft_output/CASE2024-01/EV123456-1/reports/
 
-    # User input
-    name = self.core_api.get_user_input("Enter your name")
-    confirmed = self.core_api.confirm("Are you sure?")
+    # ========== PDF Export ==========
+    # Enable automatic PDF generation
+    self.core_api.enable_pdf_export(True)
 
-    # File operations
-    content = self.core_api.read_file(Path("file.txt"))
+    # Check if PDF export is enabled
+    if self.core_api.is_pdf_export_enabled():
+        pass
+
+    # Convert markdown to PDF manually
+    pdf_path = self.core_api.convert_markdown_to_pdf(
+        markdown_path=Path("report.md"),
+        pdf_path=Path("report.pdf")  # Optional
+    )
+
+    # Export all session reports to PDF
+    pdf_paths = self.core_api.export_all_reports_to_pdf()  # Returns list[Path]
+
+    # Get list of generated reports
+    reports = self.core_api.get_generated_reports()  # Returns list[Path]
+    self.core_api.clear_generated_reports()  # Clear the list
+
+    # ========== JSON Export ==========
+    # Export plugin data to standardized JSON format
+    self.core_api.export_plugin_data_to_json(
+        output_path=Path("output.json"),
+        plugin_name="MyPlugin",
+        plugin_version="1.0.0",
+        data={"key": "value"},
+        extraction_type="cellebrite",
+        errors=[{"source": "file.db", "error": "not found"}]
+    )
+
+    # ========== User Input ==========
+    name = self.core_api.get_user_input("Enter your name")  # Returns str
+    confirmed = self.core_api.confirm("Are you sure?")  # Returns bool
+
+    # ========== File Operations ==========
+    content = self.core_api.read_file(Path("file.txt"))  # Returns str
     self.core_api.write_file(Path("output.txt"), "content")
 
-    # Shared data (inter-plugin communication)
+    # ========== Shared Data (Inter-plugin Communication) ==========
     self.core_api.set_shared_data("key", "value")
-    value = self.core_api.get_shared_data("key", default="default")
+    value = self.core_api.get_shared_data("key", default="default")  # Returns Any
+    self.core_api.clear_shared_data("key")  # Clear specific key
+    self.core_api.clear_shared_data()  # Clear all shared data
 
-    # Configuration paths
-    config_path = self.core_api.get_config_path("plugin.toml")
+    # ========== Configuration ==========
+    config_path = self.core_api.get_config_path("plugin.toml")  # Returns Path
 
-    # Rich console for advanced formatting
+    # ========== Plugin Profiles ==========
+    # Load TOML profile
+    profile = self.core_api.load_plugin_profile(Path("profiles/ios_full_analysis.toml"))
+    # Returns PluginProfile with: name, description, plugins list
+
+    # ========== Plugin Update System ==========
+    # Get updater instance
+    updater = self.core_api.get_plugin_updater(
+        repo="RedRockerSE/yaft2",  # Optional
+        branch="main",  # Optional
+        plugins_dir=Path("plugins")  # Optional
+    )
+    # Use updater methods: check_for_updates(), download_plugins(), list_available_plugins()
+
+    # ========== Rich Console ==========
+    # Direct access to Rich console for advanced formatting
     self.core_api.console.print("[bold blue]Formatted text[/bold blue]")
 ```
 
