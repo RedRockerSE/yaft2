@@ -14,6 +14,7 @@ Contact: magjon@gmail.com
 
 - **ZIP File Processing**: Built-in support for forensic analysis of ZIP archives with advanced file search capabilities
 - **Forensic Format Support**: Automatic detection and handling of Cellebrite and GrayKey extraction formats (iOS/Android)
+- **BLOB Field Handling**: Extract and analyze BLOB data (images, avatars, attachments, binary plists) from SQLite and SQLCipher databases with automatic type detection
 - **Dynamic Plugin System**: Load and manage forensic plugins at runtime without code changes
 - **Plugin Profiles**: Run multiple plugins together using TOML configuration files for standard analysis workflows
 - **Automatic Plugin Updates**: Built-in update system to sync plugins from GitHub with SHA256 verification and offline caching
@@ -514,6 +515,56 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
         cipher_version=3  # Optional
     )  # Returns Path
 
+    # ========== BLOB Field Handling ==========
+    # Detect BLOB type (images, binary plists, etc.)
+    blob_data = self.core_api.read_zip_file("some_file.blob")
+    blob_type = self.core_api.detect_blob_type(blob_data)
+    # Returns: 'jpeg', 'png', 'gif', 'bmp', 'ico', 'tiff', 'plist', or 'unknown'
+
+    # Extract single BLOB from SQLite database
+    avatar = self.core_api.extract_blob_from_zip(
+        "data/data/com.android.providers.contacts/databases/contacts2.db",
+        "SELECT photo FROM contacts WHERE _id = ?",
+        params=(123,)
+    )  # Returns bytes | None
+
+    # Extract multiple BLOBs (batch extraction)
+    photos = self.core_api.extract_blobs_from_zip(
+        "contacts2.db",
+        "SELECT photo FROM contacts WHERE photo IS NOT NULL"
+    )  # Returns list[bytes] (NULLs excluded)
+
+    # Extract BLOB from encrypted SQLCipher database
+    whatsapp_avatar = self.core_api.extract_blob_from_sqlcipher_zip(
+        "data/data/com.whatsapp/databases/wa.db",
+        "encryption_key",
+        "SELECT photo FROM wa_contacts WHERE jid = ?",
+        params=("+1234567890@s.whatsapp.net",)
+    )  # Returns bytes | None
+
+    # Extract multiple BLOBs from encrypted database
+    attachments = self.core_api.extract_blobs_from_sqlcipher_zip(
+        "data/data/com.whatsapp/databases/msgstore.db",
+        "encryption_key",
+        "SELECT raw_data FROM message_media WHERE media_mime_type LIKE 'image/%'"
+    )  # Returns list[bytes]
+
+    # Save BLOB to file with automatic extension detection
+    if avatar:
+        saved_path = self.core_api.save_blob_as_file(
+            avatar,
+            self.core_api.get_case_output_dir("avatars") / "contact_avatar.dat",
+            auto_extension=True  # Automatically detects type and corrects extension
+        )  # Returns Path - extension corrected based on detected type
+
+    # Parse binary plist from BLOB (iOS forensics)
+    plist_blob = self.core_api.extract_blob_from_zip(
+        "prefs.db",
+        "SELECT data FROM preferences WHERE key = 'config'"
+    )
+    if plist_blob:
+        config = self.core_api.parse_blob_as_plist(plist_blob)  # Returns dict or list
+
     # ========== Report Generation ==========
     # Generate unified markdown reports (automatically includes case identifiers)
     sections = [
@@ -648,6 +699,73 @@ python -m yaft.cli run --zip android.zip --profile profiles/android_full_analysi
 ```
 
 ## Advanced Features
+
+### BLOB Field Handling
+
+The Core API provides comprehensive support for extracting and handling BLOB (Binary Large Object) fields from SQLite and SQLCipher databases. This is essential for forensic analysis when dealing with images, attachments, binary plists, and other binary data stored in mobile app databases.
+
+**Common Forensic Use Cases:**
+- **Images/Avatars**: Profile pictures, contact photos (WhatsApp, Skype, Contacts)
+- **Attachments**: Message attachments, media files (WhatsApp, Signal, messaging apps)
+- **Binary Plists**: iOS app preferences, settings stored as binary property lists
+- **Thumbnails**: Photo thumbnails in gallery databases (Photos.sqlite)
+- **Cached Data**: Binary cached data from apps and browsers
+
+**Supported BLOB Types:**
+- JPEG, PNG, GIF (87a/89a), BMP, ICO, TIFF (little/big endian)
+- Binary Property Lists (iOS)
+- Automatic type detection via magic bytes
+
+**Example: Extract WhatsApp Avatars**
+```python
+# Detect ZIP format
+extraction_type, prefix = self.core_api.detect_zip_format()
+db_path = self.core_api.normalize_zip_path("data/data/com.whatsapp/databases/wa.db", prefix)
+
+# Extract all contact avatars (encrypted)
+avatars = self.core_api.extract_blobs_from_sqlcipher_zip(
+    db_path,
+    "encryption_key",
+    "SELECT jid, photo FROM wa_contacts WHERE photo IS NOT NULL"
+)
+
+# Save avatars with automatic type detection
+output_dir = self.core_api.get_case_output_dir("whatsapp_avatars")
+for i, (jid, photo) in enumerate(avatars):
+    blob_type = self.core_api.detect_blob_type(photo)
+    saved_path = self.core_api.save_blob_as_file(
+        photo,
+        output_dir / f"contact_{i}.dat",
+        auto_extension=True  # Automatically corrects extension
+    )
+    self.core_api.print_success(f"Extracted {blob_type}: {saved_path.name}")
+```
+
+**Example: Parse Binary Plist from Database**
+```python
+# Extract binary plist BLOB
+plist_blob = self.core_api.extract_blob_from_zip(
+    "filesystem1/Library/Preferences/com.apple.Preferences.db",
+    "SELECT value FROM preferences WHERE key = 'app_settings'"
+)
+
+if plist_blob:
+    # Detect type
+    if self.core_api.detect_blob_type(plist_blob) == "plist":
+        # Parse binary plist
+        config = self.core_api.parse_blob_as_plist(plist_blob)
+        print(f"App version: {config['app_version']}")
+        print(f"Settings: {config['settings']}")
+```
+
+**Key Features:**
+- Automatic BLOB type detection based on magic bytes
+- Support for both regular SQLite and encrypted SQLCipher databases
+- Automatic file extension correction when saving
+- Binary plist parsing for iOS forensics
+- Batch extraction capabilities
+- NULL value filtering
+- Consistent error handling
 
 ### ZIP File Search
 
