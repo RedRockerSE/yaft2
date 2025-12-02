@@ -1174,6 +1174,551 @@ class CoreAPI:
 
     # ========== SQLite Database Methods ==========
 
+    def detect_blob_type(self, blob_data: bytes) -> str:
+        """
+        Detect the type of BLOB data based on magic bytes.
+
+        Args:
+            blob_data: Binary BLOB data
+
+        Returns:
+            str: Detected type ('jpeg', 'png', 'gif', 'bmp', 'ico', 'tiff', 'plist', 'unknown')
+
+        Examples:
+            >>> blob = api.read_zip_file("avatar.blob")
+            >>> blob_type = api.detect_blob_type(blob)
+            >>> if blob_type == 'jpeg':
+            ...     api.save_blob_as_file(blob, Path("avatar.jpg"))
+        """
+        if not blob_data or len(blob_data) < 4:
+            return "unknown"
+
+        # Check magic bytes for common image formats
+        # JPEG
+        if blob_data[:3] == b'\xff\xd8\xff':
+            return "jpeg"
+        # PNG
+        if blob_data[:8] == b'\x89PNG\r\n\x1a\n':
+            return "png"
+        # GIF
+        if blob_data[:6] in (b'GIF87a', b'GIF89a'):
+            return "gif"
+        # BMP
+        if blob_data[:2] == b'BM':
+            return "bmp"
+        # ICO
+        if blob_data[:4] == b'\x00\x00\x01\x00':
+            return "ico"
+        # TIFF (little-endian)
+        if blob_data[:4] == b'II*\x00':
+            return "tiff"
+        # TIFF (big-endian)
+        if blob_data[:4] == b'MM\x00*':
+            return "tiff"
+        # Binary plist
+        if blob_data[:8] == b'bplist00':
+            return "plist"
+
+        return "unknown"
+
+    def save_blob_as_file(
+        self,
+        blob_data: bytes,
+        output_path: Path,
+        auto_extension: bool = True,
+    ) -> Path:
+        """
+        Save BLOB data to a file with automatic format detection.
+
+        Args:
+            blob_data: Binary BLOB data to save
+            output_path: Path where file should be saved
+            auto_extension: If True, automatically add/correct file extension based on detected type
+
+        Returns:
+            Path: Path to saved file (may differ from output_path if extension was corrected)
+
+        Raises:
+            IOError: If file cannot be written
+
+        Examples:
+            >>> # Save with automatic extension detection
+            >>> blob = api.extract_blob_from_zip("contacts.db", "SELECT photo FROM contacts WHERE id=1")
+            >>> path = api.save_blob_as_file(blob, Path("output/avatar.dat"))
+            >>> # Returns: Path("output/avatar.jpg") if JPEG detected
+
+            >>> # Save without extension modification
+            >>> path = api.save_blob_as_file(blob, Path("output/data.bin"), auto_extension=False)
+        """
+        # Detect BLOB type if auto_extension enabled
+        if auto_extension:
+            blob_type = self.detect_blob_type(blob_data)
+
+            # Map types to extensions
+            extension_map = {
+                "jpeg": ".jpg",
+                "png": ".png",
+                "gif": ".gif",
+                "bmp": ".bmp",
+                "ico": ".ico",
+                "tiff": ".tiff",
+                "plist": ".plist",
+            }
+
+            if blob_type in extension_map:
+                # Change extension if type detected
+                output_path = output_path.with_suffix(extension_map[blob_type])
+
+        # Ensure parent directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            output_path.write_bytes(blob_data)
+            self.log_info(f"Saved BLOB to: {output_path}")
+            return output_path
+        except Exception as e:
+            self.log_error(f"Failed to save BLOB file {output_path}: {e}")
+            raise
+
+    def parse_blob_as_plist(self, blob_data: bytes) -> Any:
+        """
+        Parse BLOB data as a binary plist.
+
+        This is useful for iOS forensics where many database fields store
+        binary-encoded property lists (e.g., preferences, settings).
+
+        Args:
+            blob_data: Binary BLOB data (should be binary plist format)
+
+        Returns:
+            Any: Parsed plist data (usually dict or list)
+
+        Raises:
+            Exception: If BLOB cannot be parsed as plist
+
+        Examples:
+            >>> # Extract and parse plist BLOB
+            >>> rows = api.query_sqlite_from_zip("prefs.db", "SELECT data FROM preferences WHERE key='settings'")
+            >>> plist_data = api.parse_blob_as_plist(rows[0][0])
+            >>> print(plist_data['app_version'])
+        """
+        try:
+            return plistlib.loads(blob_data)
+        except Exception as e:
+            self.log_error(f"Failed to parse BLOB as plist: {e}")
+            raise
+
+    def extract_blob_from_zip(
+        self,
+        db_path: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None,
+    ) -> bytes | None:
+        """
+        Extract a single BLOB field from a SQLite database in the ZIP archive.
+
+        This method is optimized for extracting BLOB data (images, attachments, binary plists)
+        from forensic databases. It executes a query and returns the first BLOB field from
+        the first row.
+
+        Args:
+            db_path: Path to SQLite database within the ZIP archive
+            query: SQL query that returns a BLOB column (e.g., "SELECT photo FROM contacts WHERE id=1")
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails
+
+        Returns:
+            bytes | None: BLOB data as bytes, or None if no results or NULL value
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            sqlite3.Error: If database query fails
+
+        Examples:
+            >>> # Extract avatar image from WhatsApp
+            >>> avatar_blob = api.extract_blob_from_zip(
+            ...     "data/data/com.whatsapp/databases/wa.db",
+            ...     "SELECT photo FROM wa_contacts WHERE jid = ?",
+            ...     params=("+1234567890@s.whatsapp.net",)
+            ... )
+            >>> if avatar_blob:
+            ...     api.save_blob_as_file(avatar_blob, Path("output/avatar.jpg"))
+
+            >>> # Extract iOS Photo thumbnail
+            >>> thumbnail = api.extract_blob_from_zip(
+            ...     "filesystem1/private/var/mobile/Media/PhotoData/Photos.sqlite",
+            ...     "SELECT thumbnailImage FROM ZGENERICASSET WHERE ZUUID = ?",
+            ...     params=("ABC123-DEF456",)
+            ... )
+        """
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Query the database
+            conn = sqlite3.connect(str(temp_db_path))
+            cursor = conn.cursor()
+
+            try:
+                cursor.execute(query, params)
+                result = cursor.fetchone()
+            except sqlite3.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    result = cursor.fetchone()
+                else:
+                    raise
+
+            conn.close()
+
+            # Return first column (should be BLOB)
+            if result and result[0] is not None:
+                return bytes(result[0])
+            return None
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
+
+    def extract_blobs_from_zip(
+        self,
+        db_path: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None,
+    ) -> list[bytes]:
+        """
+        Extract multiple BLOB fields from a SQLite database in the ZIP archive.
+
+        This method executes a query and returns BLOB data from the first column
+        of all matching rows. Useful for batch extraction of images, attachments, etc.
+
+        Args:
+            db_path: Path to SQLite database within the ZIP archive
+            query: SQL query that returns a BLOB column
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails
+
+        Returns:
+            list[bytes]: List of BLOB data as bytes (NULLs are excluded)
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            sqlite3.Error: If database query fails
+
+        Examples:
+            >>> # Extract all contact photos
+            >>> photos = api.extract_blobs_from_zip(
+            ...     "data/data/com.android.providers.contacts/databases/contacts2.db",
+            ...     "SELECT photo FROM contacts WHERE photo IS NOT NULL"
+            ... )
+            >>> for i, photo_blob in enumerate(photos):
+            ...     api.save_blob_as_file(photo_blob, Path(f"output/contact_{i}.jpg"))
+
+            >>> # Extract message attachments
+            >>> attachments = api.extract_blobs_from_zip(
+            ...     "databases/msgstore.db",
+            ...     "SELECT raw_data FROM message_media WHERE media_mime_type LIKE 'image/%'"
+            ... )
+        """
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Query the database
+            conn = sqlite3.connect(str(temp_db_path))
+            cursor = conn.cursor()
+
+            try:
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+            except sqlite3.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    results = cursor.fetchall()
+                else:
+                    raise
+
+            conn.close()
+
+            # Extract first column from each row (should be BLOBs), filter out NULLs
+            blobs = []
+            for row in results:
+                if row and row[0] is not None:
+                    blobs.append(bytes(row[0]))
+
+            return blobs
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
+
+    def extract_blob_from_sqlcipher_zip(
+        self,
+        db_path: str,
+        key: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None,
+        cipher_version: int | None = None,
+    ) -> bytes | None:
+        """
+        Extract a single BLOB field from an encrypted SQLCipher database in the ZIP archive.
+
+        This method is optimized for extracting BLOB data (images, attachments, binary plists)
+        from encrypted forensic databases like WhatsApp, Signal, or encrypted iOS app databases.
+
+        Args:
+            db_path: Path to encrypted SQLCipher database within the ZIP archive
+            key: Encryption key/password for the database
+            query: SQL query that returns a BLOB column
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails
+            cipher_version: Optional SQLCipher version compatibility (1-4)
+
+        Returns:
+            bytes | None: BLOB data as bytes, or None if no results or NULL value
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            ImportError: If sqlcipher3 is not installed
+            Exception: If decryption fails
+
+        Examples:
+            >>> # Extract WhatsApp profile picture
+            >>> avatar = api.extract_blob_from_sqlcipher_zip(
+            ...     "data/data/com.whatsapp/databases/wa.db",
+            ...     "whatsapp_key_123",
+            ...     "SELECT photo FROM wa_contacts WHERE jid = ?",
+            ...     params=("+1234567890@s.whatsapp.net",)
+            ... )
+            >>> if avatar:
+            ...     api.save_blob_as_file(avatar, Path("output/whatsapp_avatar.jpg"))
+
+            >>> # Extract Signal attachment
+            >>> attachment = api.extract_blob_from_sqlcipher_zip(
+            ...     "data/data/org.thoughtcrime.securesms/databases/signal.db",
+            ...     "signal_key",
+            ...     "SELECT data FROM part WHERE unique_id = ?",
+            ...     params=(123456,)
+            ... )
+        """
+        try:
+            from sqlcipher3 import dbapi2 as sqlcipher
+        except ImportError as e:
+            error_msg = (
+                "SQLCipher support requires 'sqlcipher3' package. "
+                "Install with: uv pip install sqlcipher3"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Connect to encrypted database
+            conn = sqlcipher.connect(str(temp_db_path))
+            cursor = conn.cursor()
+
+            # Set encryption key
+            cursor.execute(f"PRAGMA key = '{key}'")
+
+            # Set cipher version compatibility if specified
+            if cipher_version is not None:
+                cursor.execute(f"PRAGMA cipher_compatibility = {cipher_version}")
+
+            # Verify database is accessible
+            try:
+                cursor.execute("SELECT count(*) FROM sqlite_master")
+                cursor.fetchone()
+            except Exception as e:
+                conn.close()
+                raise ValueError(
+                    f"Failed to decrypt database. Possible causes: wrong key, corrupted database, "
+                    f"or incompatible SQLCipher version. Error: {e}"
+                ) from e
+
+            # Execute the actual query
+            try:
+                cursor.execute(query, params)
+                result = cursor.fetchone()
+            except sqlcipher.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    result = cursor.fetchone()
+                else:
+                    raise
+
+            conn.close()
+
+            # Return first column (should be BLOB)
+            if result and result[0] is not None:
+                return bytes(result[0])
+            return None
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
+
+    def extract_blobs_from_sqlcipher_zip(
+        self,
+        db_path: str,
+        key: str,
+        query: str,
+        params: tuple = (),
+        fallback_query: str | None = None,
+        cipher_version: int | None = None,
+    ) -> list[bytes]:
+        """
+        Extract multiple BLOB fields from an encrypted SQLCipher database in the ZIP archive.
+
+        This method executes a query and returns BLOB data from the first column
+        of all matching rows. Useful for batch extraction of encrypted images, attachments, etc.
+
+        Args:
+            db_path: Path to encrypted SQLCipher database within the ZIP archive
+            key: Encryption key/password for the database
+            query: SQL query that returns a BLOB column
+            params: Optional tuple of query parameters
+            fallback_query: Optional fallback query if primary query fails
+            cipher_version: Optional SQLCipher version compatibility (1-4)
+
+        Returns:
+            list[bytes]: List of BLOB data as bytes (NULLs are excluded)
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If database file is not found in ZIP
+            ImportError: If sqlcipher3 is not installed
+            Exception: If decryption fails
+
+        Examples:
+            >>> # Extract all WhatsApp profile pictures
+            >>> avatars = api.extract_blobs_from_sqlcipher_zip(
+            ...     "data/data/com.whatsapp/databases/wa.db",
+            ...     "whatsapp_key",
+            ...     "SELECT photo FROM wa_contacts WHERE photo IS NOT NULL"
+            ... )
+            >>> for i, avatar in enumerate(avatars):
+            ...     api.save_blob_as_file(avatar, Path(f"output/contact_{i}.jpg"))
+
+            >>> # Extract Signal message attachments
+            >>> attachments = api.extract_blobs_from_sqlcipher_zip(
+            ...     "data/data/org.thoughtcrime.securesms/databases/signal.db",
+            ...     "signal_key",
+            ...     "SELECT data FROM part WHERE content_type LIKE 'image/%'"
+            ... )
+        """
+        try:
+            from sqlcipher3 import dbapi2 as sqlcipher
+        except ImportError as e:
+            error_msg = (
+                "SQLCipher support requires 'sqlcipher3' package. "
+                "Install with: uv pip install sqlcipher3"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        temp_db_path = None
+        try:
+            # Extract database to temporary file
+            content = self.read_zip_file(db_path)
+
+            # Create temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as temp_file:
+                temp_db_path = Path(temp_file.name)
+                temp_file.write(content)
+
+            # Connect to encrypted database
+            conn = sqlcipher.connect(str(temp_db_path))
+            cursor = conn.cursor()
+
+            # Set encryption key
+            cursor.execute(f"PRAGMA key = '{key}'")
+
+            # Set cipher version compatibility if specified
+            if cipher_version is not None:
+                cursor.execute(f"PRAGMA cipher_compatibility = {cipher_version}")
+
+            # Verify database is accessible
+            try:
+                cursor.execute("SELECT count(*) FROM sqlite_master")
+                cursor.fetchone()
+            except Exception as e:
+                conn.close()
+                raise ValueError(
+                    f"Failed to decrypt database. Possible causes: wrong key, corrupted database, "
+                    f"or incompatible SQLCipher version. Error: {e}"
+                ) from e
+
+            # Execute the actual query
+            try:
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+            except sqlcipher.OperationalError as e:
+                if fallback_query:
+                    self.log_warning(f"Primary query failed, trying fallback: {e}")
+                    cursor.execute(fallback_query, params)
+                    results = cursor.fetchall()
+                else:
+                    raise
+
+            conn.close()
+
+            # Extract first column from each row (should be BLOBs), filter out NULLs
+            blobs = []
+            for row in results:
+                if row and row[0] is not None:
+                    blobs.append(bytes(row[0]))
+
+            return blobs
+
+        finally:
+            # Clean up temp file
+            if temp_db_path and temp_db_path.exists():
+                try:
+                    temp_db_path.unlink()
+                except Exception as e:
+                    self.log_warning(f"Failed to delete temp database file: {e}")
+
     def query_sqlcipher_from_zip(
         self,
         db_path: str,
