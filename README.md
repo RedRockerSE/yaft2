@@ -15,6 +15,7 @@ Contact: magjon@gmail.com
 - **ZIP File Processing**: Built-in support for forensic analysis of ZIP archives with advanced file search capabilities
 - **Forensic Format Support**: Automatic detection and handling of Cellebrite and GrayKey extraction formats (iOS/Android)
 - **BLOB Field Handling**: Extract and analyze BLOB data (images, avatars, attachments, binary plists) from SQLite and SQLCipher databases with automatic type detection
+- **Keychain/Keystore Metadata**: Extract metadata from iOS Keychain and Android Keystore/locksettings for credential inventory, timeline analysis, and security assessment
 - **Dynamic Plugin System**: Load and manage forensic plugins at runtime without code changes
 - **Plugin Profiles**: Run multiple plugins together using TOML configuration files for standard analysis workflows
 - **Automatic Plugin Updates**: Built-in update system to sync plugins from GitHub with SHA256 verification and offline caching
@@ -565,6 +566,67 @@ def execute(self, *args: Any, **kwargs: Any) -> Any:
     if plist_blob:
         config = self.core_api.parse_blob_as_plist(plist_blob)  # Returns dict or list
 
+    # ========== iOS Keychain and Android Keystore Metadata ==========
+    # Parse iOS keychain database (metadata only - no decryption)
+    keychain = self.core_api.parse_ios_keychain(
+        "private/var/Keychains/keychain-2.db"
+    )
+    # Returns dict with:
+    # - generic_passwords: List of password entries with metadata
+    # - internet_passwords: List of web passwords with metadata
+    # - certificates: List of certificate entries
+    # - keys: List of cryptographic keys
+    # - summary: Statistics (total counts, sync status)
+    # - security_note: Warning about Secure Enclave encryption
+
+    total_passwords = keychain["summary"]["total_generic_passwords"]
+    sync_items = keychain["summary"]["synchronizable_items"]
+
+    # Find credentials for specific app
+    app_creds = [
+        item for item in keychain["generic_passwords"]
+        if item["access_group"] == "com.example.app"
+    ]
+
+    # Parse Android locksettings database
+    locksettings = self.core_api.parse_android_locksettings(
+        "data/system/locksettings.db"
+    )
+    # Returns dict with:
+    # - lock_settings: Dictionary of lock screen settings
+    # - user_settings: Per-user lock screen configurations
+    # - summary: Analysis (detected_lock_type, user_count)
+    # - security_note: Warning about Gatekeeper encryption
+
+    lock_type = locksettings["summary"]["detected_lock_type"]
+    # Values: "none", "pattern", "pin", "password"
+
+    # Check multi-user configuration
+    if locksettings["summary"]["user_count"] > 1:
+        for user in locksettings["user_settings"]:
+            user_id = user["user_id"]
+            lock_code = user.get("lockscreen.password_type", "0")
+
+    # Identify Android keystore files
+    keystore = self.core_api.identify_android_keystore_files(
+        keystore_dir="data/misc/keystore"  # Default path
+    )
+    # Returns dict with:
+    # - keystore_files: List of .masterkey and key files
+    # - credential_files: Lock screen credential files
+    # - user_keystores: List of user IDs with keystores
+    # - summary: Statistics (total files, key types)
+    # - security_note: Warning about TEE/SE protection
+
+    total_keys = keystore["summary"]["total_keystore_files"]
+    has_gatekeeper = keystore["summary"]["gatekeeper_keys"] > 0
+
+    # Identify apps with keystore entries
+    app_keys = [
+        f for f in keystore["keystore_files"]
+        if f["type"] == "key_entry"
+    ]
+
     # ========== Report Generation ==========
     # Generate unified markdown reports (automatically includes case identifiers)
     sections = [
@@ -766,6 +828,131 @@ if plist_blob:
 - Batch extraction capabilities
 - NULL value filtering
 - Consistent error handling
+
+### iOS Keychain and Android Keystore Metadata Extraction
+
+The Core API provides methods to extract metadata from iOS Keychain and Android Keystore/locksettings databases. These methods are designed for **metadata extraction only** - they do not decrypt encrypted credentials due to hardware-backed encryption on modern devices.
+
+**Important Security Note**: Modern iOS devices (iPhone 5s+) use the Secure Enclave, and Android devices (6.0+) use Gatekeeper with hardware-backed encryption. The encryption keys are device-specific and non-exportable, making offline decryption of actual passwords/credentials practically impossible without the physical device. These methods provide valuable forensic intelligence through metadata analysis and inventory.
+
+**What You Get:**
+- **iOS Keychain**: Inventory of passwords, certificates, and keys; timeline analysis; app associations; iCloud sync status
+- **Android Locksettings**: Lock screen type (none/pattern/PIN/password); multi-user configurations; security settings
+- **Android Keystore**: Catalog of keystore files; Gatekeeper vs legacy authentication; per-user keystores
+
+**Example: Analyze iOS Keychain**
+```python
+# Parse iOS keychain database
+keychain = self.core_api.parse_ios_keychain(
+    "private/var/Keychains/keychain-2.db"
+)
+
+# Print summary statistics
+summary = keychain["summary"]
+self.core_api.print_info(f"Total passwords: {summary['total_generic_passwords']}")
+self.core_api.print_info(f"Total internet passwords: {summary['total_internet_passwords']}")
+self.core_api.print_info(f"Items synced to iCloud: {summary['synchronizable_items']}")
+
+# Identify apps with stored credentials
+access_groups = set()
+for item in keychain["generic_passwords"]:
+    if item["access_group"]:
+        access_groups.add(item["access_group"])
+
+self.core_api.print_info(f"Apps with credentials: {len(access_groups)}")
+
+# Find credentials for specific domain
+target_domain = "facebook.com"
+fb_creds = [
+    item for item in keychain["internet_passwords"]
+    if target_domain in (item.get("server") or "")
+]
+self.core_api.print_info(f"Facebook credentials found: {len(fb_creds)}")
+```
+
+**Example: Analyze Android Lock Screen**
+```python
+# Parse Android locksettings database
+locksettings = self.core_api.parse_android_locksettings(
+    "data/system/locksettings.db"
+)
+
+# Check lock type
+lock_type = locksettings["summary"]["detected_lock_type"]
+if lock_type == "none":
+    self.core_api.print_warning("Device has no lock screen protection")
+elif lock_type == "pattern":
+    self.core_api.print_info("Device uses pattern lock")
+elif lock_type == "pin":
+    self.core_api.print_info("Device uses PIN lock")
+elif lock_type == "password":
+    self.core_api.print_info("Device uses password lock")
+
+# Analyze multi-user setup
+user_count = locksettings["summary"]["user_count"]
+if user_count > 1:
+    self.core_api.print_info(f"Multi-user device with {user_count} profiles")
+    for user in locksettings["user_settings"]:
+        lock_type_code = user.get("lockscreen.password_type", "0")
+        lock_names = {
+            "131072": "Pattern",
+            "196608": "PIN",
+            "262144": "Password"
+        }
+        lock = lock_names.get(lock_type_code, "None")
+        self.core_api.print_info(f"  User {user['user_id']}: {lock}")
+```
+
+**Example: Catalog Android Keystore Files**
+```python
+# Identify keystore files
+keystore = self.core_api.identify_android_keystore_files(
+    keystore_dir="data/misc/keystore"
+)
+
+# Print summary
+summary = keystore["summary"]
+self.core_api.print_info(f"Total keystore files: {summary['total_keystore_files']}")
+self.core_api.print_info(f"Master keys: {summary['master_keys']}")
+self.core_api.print_info(f"Application keys: {summary['key_entries']}")
+
+# Check authentication method
+if summary["gatekeeper_keys"] > 0:
+    self.core_api.print_info("Uses Gatekeeper (Android 6.0+) - hardware-backed")
+elif summary["legacy_credentials"] > 0:
+    self.core_api.print_info("Uses legacy credentials (pre-Android 6.0)")
+
+# Identify apps with stored keys
+app_keys = [
+    f for f in keystore["keystore_files"]
+    if f["type"] == "key_entry"
+]
+self.core_api.print_info(f"Apps with keystore entries: {len(app_keys)}")
+
+# Multi-user analysis
+for user_id in keystore["user_keystores"]:
+    user_keys = [f for f in keystore["keystore_files"] if f.get("user_id") == user_id]
+    self.core_api.print_info(f"User {user_id} has {len(user_keys)} keystore files")
+```
+
+**Forensic Value:**
+- Understand which apps/services have credentials stored
+- Timeline analysis (when credentials were created/modified)
+- Correlation with other artifacts (app usage, network connections)
+- Identify high-value targets for on-device exploitation
+- Support warrant applications with evidence of credential existence
+- Multi-user device analysis
+- Lock screen security assessment
+
+**Why Metadata-Only?**
+
+Modern mobile devices use hardware-backed encryption that makes offline credential decryption practically impossible:
+- **iOS Secure Enclave** (iPhone 5s+): Encryption keys never leave the secure processor
+- **Android Gatekeeper** (6.0+): Hardware-backed HMAC requires device cooperation
+- **Hardware-Backed Keys**: Marked as non-exportable by design
+- **Device-Specific Encryption**: Keys derived from device UID + user password
+
+Professional forensic tools (Cellebrite, GrayKey) use exploit vulnerabilities, firmware-level access, or on-device brute-force. These metadata extraction methods complement such tools by providing intelligence even when decryption isn't possible.
 
 ### ZIP File Search
 

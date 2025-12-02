@@ -1172,6 +1172,481 @@ class CoreAPI:
         content = self.read_zip_file(path)
         return self.parse_xml(content)
 
+    # ========== Keychain and Keystore Methods ==========
+
+    def parse_ios_keychain(
+        self,
+        keychain_db_path: str,
+    ) -> dict[str, Any]:
+        """
+        Parse iOS keychain-2.db database and extract metadata from encrypted entries.
+
+        This method parses the iOS Keychain SQLite database and extracts all available
+        metadata about stored credentials, keys, certificates, and passwords. The actual
+        credential data is encrypted and cannot be decrypted without device-specific keys
+        from the Secure Enclave (iPhone 5s and newer).
+
+        Args:
+            keychain_db_path: Path to keychain-2.db file within ZIP archive
+
+        Returns:
+            dict containing:
+                - 'generic_passwords': List of generic password entries (genp table)
+                - 'internet_passwords': List of internet password entries (inet table)
+                - 'certificates': List of certificate entries (cert table)
+                - 'keys': List of key entries (keys table)
+                - 'summary': Statistics about keychain contents
+                - 'security_note': Warning about encryption
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If keychain database file is not found in ZIP
+
+        Examples:
+            >>> # Extract keychain metadata from iOS extraction
+            >>> keychain_data = api.parse_ios_keychain("private/var/Keychains/keychain-2.db")
+            >>> print(f"Generic passwords: {len(keychain_data['generic_passwords'])}")
+            >>> print(f"Internet passwords: {len(keychain_data['internet_passwords'])}")
+            >>>
+            >>> # Analyze entries
+            >>> for entry in keychain_data['generic_passwords']:
+            ...     print(f"Service: {entry.get('svce', 'Unknown')}")
+            ...     print(f"Account: {entry.get('acct', 'Unknown')}")
+            ...     print(f"Access Group: {entry.get('agrp', 'Unknown')}")
+            ...     print(f"Created: {entry.get('cdat', 'Unknown')}")
+            ...     print(f"Encrypted: {entry.get('is_encrypted', False)}")
+        """
+        result: dict[str, Any] = {
+            'generic_passwords': [],
+            'internet_passwords': [],
+            'certificates': [],
+            'keys': [],
+            'summary': {},
+            'security_note': (
+                "iOS Keychain entries are encrypted with device-specific keys stored in "
+                "the Secure Enclave (iPhone 5s+). Individual fields (acct, data, svce) "
+                "cannot be decrypted without the device being unlocked. This metadata "
+                "extraction shows what credentials exist but not their actual values."
+            )
+        }
+
+        try:
+            # Query generic passwords (genp table)
+            genp_query = """
+                SELECT rowid, cdat, mdat, desc, labl, acct, svce, agrp,
+                       pdmn, sync, data, sha1
+                FROM genp
+            """
+            genp_rows = self.query_sqlite_from_zip_dict(keychain_db_path, genp_query)
+
+            for row in genp_rows:
+                entry = {
+                    'rowid': row.get('rowid'),
+                    'creation_date': row.get('cdat'),
+                    'modification_date': row.get('mdat'),
+                    'description': row.get('desc'),
+                    'label': row.get('labl'),
+                    'account': row.get('acct'),  # Usually encrypted (BLOB)
+                    'service': row.get('svce'),  # Usually encrypted (BLOB)
+                    'access_group': row.get('agrp'),
+                    'protection_domain': row.get('pdmn'),
+                    'sync_enabled': bool(row.get('sync')),
+                    'data': row.get('data'),  # Encrypted (BLOB)
+                    'sha1': row.get('sha1'),
+                    'is_encrypted': isinstance(row.get('data'), bytes) if row.get('data') else False,
+                    'type': 'generic_password'
+                }
+                result['generic_passwords'].append(entry)
+
+        except Exception as e:
+            self.log_warning(f"Could not query genp table: {e}")
+
+        try:
+            # Query internet passwords (inet table)
+            inet_query = """
+                SELECT rowid, cdat, mdat, desc, labl, acct, sdmn, srvr,
+                       ptcl, atyp, port, path, agrp, pdmn, sync, data
+                FROM inet
+            """
+            inet_rows = self.query_sqlite_from_zip_dict(keychain_db_path, inet_query)
+
+            for row in inet_rows:
+                entry = {
+                    'rowid': row.get('rowid'),
+                    'creation_date': row.get('cdat'),
+                    'modification_date': row.get('mdat'),
+                    'description': row.get('desc'),
+                    'label': row.get('labl'),
+                    'account': row.get('acct'),  # Usually encrypted (BLOB)
+                    'security_domain': row.get('sdmn'),
+                    'server': row.get('srvr'),
+                    'protocol': row.get('ptcl'),
+                    'authentication_type': row.get('atyp'),
+                    'port': row.get('port'),
+                    'path': row.get('path'),
+                    'access_group': row.get('agrp'),
+                    'protection_domain': row.get('pdmn'),
+                    'sync_enabled': bool(row.get('sync')),
+                    'data': row.get('data'),  # Encrypted (BLOB)
+                    'is_encrypted': isinstance(row.get('data'), bytes) if row.get('data') else False,
+                    'type': 'internet_password'
+                }
+                result['internet_passwords'].append(entry)
+
+        except Exception as e:
+            self.log_warning(f"Could not query inet table: {e}")
+
+        try:
+            # Query certificates (cert table)
+            cert_query = """
+                SELECT rowid, cdat, mdat, ctyp, cenc, labl, certType,
+                       agrp, pdmn, sync, data, sha1
+                FROM cert
+            """
+            cert_rows = self.query_sqlite_from_zip_dict(keychain_db_path, cert_query)
+
+            for row in cert_rows:
+                entry = {
+                    'rowid': row.get('rowid'),
+                    'creation_date': row.get('cdat'),
+                    'modification_date': row.get('mdat'),
+                    'certificate_type': row.get('ctyp'),
+                    'certificate_encoding': row.get('cenc'),
+                    'label': row.get('labl'),
+                    'cert_type': row.get('certType'),
+                    'access_group': row.get('agrp'),
+                    'protection_domain': row.get('pdmn'),
+                    'sync_enabled': bool(row.get('sync')),
+                    'data': row.get('data'),  # Certificate data (may be encrypted)
+                    'sha1': row.get('sha1'),
+                    'is_encrypted': isinstance(row.get('data'), bytes) if row.get('data') else False,
+                    'type': 'certificate'
+                }
+                result['certificates'].append(entry)
+
+        except Exception as e:
+            self.log_warning(f"Could not query cert table: {e}")
+
+        try:
+            # Query keys (keys table)
+            keys_query = """
+                SELECT rowid, cdat, mdat, kcls, labl, atag, crtr,
+                       type, bsiz, esiz, agrp, pdmn, sync, data
+                FROM keys
+            """
+            keys_rows = self.query_sqlite_from_zip_dict(keychain_db_path, keys_query)
+
+            for row in keys_rows:
+                entry = {
+                    'rowid': row.get('rowid'),
+                    'creation_date': row.get('cdat'),
+                    'modification_date': row.get('mdat'),
+                    'key_class': row.get('kcls'),
+                    'label': row.get('labl'),
+                    'application_tag': row.get('atag'),
+                    'creator': row.get('crtr'),
+                    'type': row.get('type'),
+                    'block_size': row.get('bsiz'),
+                    'effective_size': row.get('esiz'),
+                    'access_group': row.get('agrp'),
+                    'protection_domain': row.get('pdmn'),
+                    'sync_enabled': bool(row.get('sync')),
+                    'data': row.get('data'),  # Key data (encrypted)
+                    'is_encrypted': isinstance(row.get('data'), bytes) if row.get('data') else False,
+                    'item_type': 'key'
+                }
+                result['keys'].append(entry)
+
+        except Exception as e:
+            self.log_warning(f"Could not query keys table: {e}")
+
+        # Generate summary statistics
+        result['summary'] = {
+            'total_entries': (
+                len(result['generic_passwords']) +
+                len(result['internet_passwords']) +
+                len(result['certificates']) +
+                len(result['keys'])
+            ),
+            'generic_passwords_count': len(result['generic_passwords']),
+            'internet_passwords_count': len(result['internet_passwords']),
+            'certificates_count': len(result['certificates']),
+            'keys_count': len(result['keys']),
+            'encrypted_entries': sum(
+                1 for entry in (
+                    result['generic_passwords'] +
+                    result['internet_passwords'] +
+                    result['certificates'] +
+                    result['keys']
+                )
+                if entry.get('is_encrypted')
+            ),
+        }
+
+        return result
+
+    def parse_android_locksettings(
+        self,
+        locksettings_db_path: str,
+    ) -> dict[str, Any]:
+        """
+        Parse Android locksettings.db database to extract lock screen configuration.
+
+        This method extracts lock screen settings and metadata from the Android
+        locksettings.db database. The actual credential data (PINs, passwords, patterns)
+        is hashed/encrypted and cannot be decrypted without device-specific keys,
+        especially on Android 6.0+ devices with Gatekeeper/TEE protection.
+
+        Args:
+            locksettings_db_path: Path to locksettings.db file within ZIP archive
+
+        Returns:
+            dict containing:
+                - 'lock_settings': Dictionary of lock screen settings
+                - 'user_settings': Per-user lock screen configurations
+                - 'summary': Statistics and analysis
+                - 'security_note': Warning about encryption
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+            KeyError: If locksettings database file is not found in ZIP
+
+        Examples:
+            >>> # Extract lock settings from Android extraction
+            >>> lock_data = api.parse_android_locksettings("data/system/locksettings.db")
+            >>> print(f"Lock pattern enabled: {lock_data['summary']['lock_pattern_enabled']}")
+            >>> print(f"Lock type: {lock_data['summary']['lock_type']}")
+            >>>
+            >>> # Check for specific settings
+            >>> settings = lock_data['lock_settings']
+            >>> if 'lockscreen.password_type' in settings:
+            ...     print(f"Password type: {settings['lockscreen.password_type']}")
+        """
+        result: dict[str, Any] = {
+            'lock_settings': {},
+            'user_settings': {},
+            'summary': {},
+            'security_note': (
+                "Android lock screen credentials are protected by Gatekeeper (Android 6.0+) "
+                "using HMAC with hardware-backed secret keys in the TEE. Password hashes use "
+                "PBKDF2 with device-specific salts. Actual credentials cannot be extracted "
+                "without device cooperation or specialized hardware attacks."
+            )
+        }
+
+        try:
+            # Query locksettings table
+            settings_query = """
+                SELECT name, user, value
+                FROM locksettings
+            """
+            settings_rows = self.query_sqlite_from_zip_dict(locksettings_db_path, settings_query)
+
+            for row in settings_rows:
+                name = row.get('name', '')
+                user = row.get('user', 0)
+                value = row.get('value', '')
+
+                # Store setting
+                setting_key = f"{name}_user{user}" if user != 0 else name
+                result['lock_settings'][setting_key] = {
+                    'name': name,
+                    'user': user,
+                    'value': value
+                }
+
+                # Track per-user settings
+                if user not in result['user_settings']:
+                    result['user_settings'][user] = {}
+                result['user_settings'][user][name] = value
+
+        except Exception as e:
+            self.log_warning(f"Could not query locksettings table: {e}")
+
+        # Analyze lock screen configuration
+        summary = {
+            'lock_pattern_enabled': False,
+            'lock_password_enabled': False,
+            'lock_type': 'none',
+            'lockscreen_disabled': False,
+            'user_count': len(result['user_settings']),
+        }
+
+        # Check for lock pattern
+        for key in result['lock_settings']:
+            if 'lockscreen.patterneverchosen' in key.lower():
+                if result['lock_settings'][key]['value'] == '0':
+                    summary['lock_pattern_enabled'] = True
+                    summary['lock_type'] = 'pattern'
+
+        # Check for lock password/PIN
+        for key in result['lock_settings']:
+            if 'lockscreen.password_type' in key.lower():
+                pwd_type = result['lock_settings'][key]['value']
+                if pwd_type and pwd_type != '0':
+                    summary['lock_password_enabled'] = True
+                    # Password types: 0=none, 131072=pattern, 196608=PIN, 262144=password, 327680=password+pattern
+                    if pwd_type == '131072':
+                        summary['lock_type'] = 'pattern'
+                    elif pwd_type == '196608':
+                        summary['lock_type'] = 'PIN'
+                    elif pwd_type == '262144':
+                        summary['lock_type'] = 'password'
+                    elif pwd_type == '327680':
+                        summary['lock_type'] = 'password+pattern'
+                    else:
+                        summary['lock_type'] = f'unknown ({pwd_type})'
+
+        # Check if lockscreen is disabled
+        for key in result['lock_settings']:
+            if 'lockscreen.disabled' in key.lower():
+                if result['lock_settings'][key]['value'] == '1':
+                    summary['lockscreen_disabled'] = True
+
+        result['summary'] = summary
+        return result
+
+    def identify_android_keystore_files(
+        self,
+        keystore_dir: str = "data/misc/keystore",
+    ) -> dict[str, Any]:
+        """
+        Identify and catalog Android Keystore files in the extraction.
+
+        This method scans for Android Keystore files and credential storage files.
+        The actual key material is encrypted and cannot be extracted without device
+        cooperation, especially for hardware-backed keys in TEE/Secure Element.
+
+        Args:
+            keystore_dir: Path to keystore directory within ZIP (default: data/misc/keystore)
+
+        Returns:
+            dict containing:
+                - 'keystore_files': List of .masterkey and key files found
+                - 'credential_files': Lock screen credential files (gatekeeper.*.key, password.key, etc.)
+                - 'user_keystores': Per-user keystore locations
+                - 'summary': Statistics about found files
+                - 'security_note': Warning about encryption
+
+        Raises:
+            RuntimeError: If no ZIP file is currently loaded
+
+        Examples:
+            >>> # Identify keystore files
+            >>> keystore_data = api.identify_android_keystore_files()
+            >>> print(f"Found {len(keystore_data['keystore_files'])} keystore files")
+            >>> print(f"Found {len(keystore_data['credential_files'])} credential files")
+            >>>
+            >>> # List credential files
+            >>> for cred_file in keystore_data['credential_files']:
+            ...     print(f"Credential: {cred_file['filename']} ({cred_file['type']})")
+        """
+        result: dict[str, Any] = {
+            'keystore_files': [],
+            'credential_files': [],
+            'user_keystores': {},
+            'summary': {},
+            'security_note': (
+                "Android Keystore key material is protected from extraction. Hardware-backed "
+                "keys (stored in TEE/Secure Element) are non-exportable. Software-backed keys "
+                "are encrypted with PBKDF2-derived keys from user credentials. Gatekeeper "
+                "(Android 6.0+) protects lock screen credentials with hardware-backed HMAC."
+            )
+        }
+
+        try:
+            # Find all files in keystore directory and subdirectories
+            keystore_files = self.find_files_in_zip("*", search_path=keystore_dir)
+
+            for filepath in keystore_files:
+                filename = filepath.split('/')[-1]
+
+                # Identify file type
+                file_info = {
+                    'path': filepath,
+                    'filename': filename,
+                    'type': 'unknown',
+                    'user': None,
+                }
+
+                # Check for user-specific keystores
+                if '/user_' in filepath:
+                    user_id = filepath.split('/user_')[1].split('/')[0]
+                    file_info['user'] = user_id
+                    if user_id not in result['user_keystores']:
+                        result['user_keystores'][user_id] = []
+
+                # Categorize file types
+                if filename.endswith('.masterkey'):
+                    file_info['type'] = 'master_key'
+                    result['keystore_files'].append(file_info)
+                    if file_info['user']:
+                        result['user_keystores'][file_info['user']].append(file_info)
+                elif filename.startswith('gatekeeper.'):
+                    file_info['type'] = 'gatekeeper_key'
+                    result['credential_files'].append(file_info)
+                elif filename in ['password.key', 'gesture.key', 'pattern.key']:
+                    file_info['type'] = 'legacy_credential'
+                    result['credential_files'].append(file_info)
+                elif not filename.startswith('.') and filename != 'user_0':
+                    # Likely a keystore entry file
+                    file_info['type'] = 'keystore_entry'
+                    result['keystore_files'].append(file_info)
+                    if file_info['user']:
+                        result['user_keystores'][file_info['user']].append(file_info)
+
+        except Exception as e:
+            self.log_warning(f"Could not scan keystore directory: {e}")
+
+        # Also check data/system for credential files
+        try:
+            system_cred_files = self.find_files_in_zip(
+                "*",
+                search_path="data/system"
+            )
+
+            for filepath in system_cred_files:
+                filename = filepath.split('/')[-1]
+
+                if filename in ['password.key', 'gesture.key', 'pattern.key',
+                                'gatekeeper.password.key', 'gatekeeper.pattern.key',
+                                'gatekeeper.gesture.key']:
+                    # Determine file type
+                    if filename.startswith('gatekeeper.'):
+                        file_type = 'gatekeeper_key'
+                    elif filename in ['password.key', 'gesture.key', 'pattern.key']:
+                        file_type = 'legacy_credential'
+                    else:
+                        file_type = 'credential_file'
+
+                    file_info = {
+                        'path': filepath,
+                        'filename': filename,
+                        'type': file_type,
+                        'user': None,
+                    }
+                    result['credential_files'].append(file_info)
+
+        except Exception as e:
+            self.log_warning(f"Could not scan data/system directory: {e}")
+
+        # Generate summary
+        result['summary'] = {
+            'total_keystore_files': len(result['keystore_files']),
+            'total_credential_files': len(result['credential_files']),
+            'user_count': len(result['user_keystores']),
+            'has_gatekeeper': any(
+                f['type'] == 'gatekeeper_key'
+                for f in result['credential_files']
+            ),
+            'has_legacy_credentials': any(
+                f['type'] == 'legacy_credential'
+                for f in result['credential_files']
+            ),
+        }
+
+        return result
+
     # ========== SQLite Database Methods ==========
 
     def detect_blob_type(self, blob_data: bytes) -> str:
