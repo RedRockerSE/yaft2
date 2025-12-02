@@ -1,6 +1,6 @@
 {
   "manifest_version": "1.0.0",
-  "last_updated": "2025-11-19T18:01:54.579885+00:00",
+  "last_updated": "2025-12-02T21:47:51.358387+00:00",
   "repository": "RedRockerSE/yaft2",
   "branch": "main",
   "plugins": [
@@ -52,6 +52,20 @@
       "size": 30580,
       "required": true,
       "os_target": [
+        "android"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "ContactPhotoExtractorPlugin",
+      "filename": "contact_photo_extractor.py",
+      "version": "1.0.0",
+      "description": "Extract contact photos/avatars from mobile device databases",
+      "sha256": "90d06b8d94484e6e51a5c17c7db923301dc8ca4ec9d3770df9c7e6241926b3c8",
+      "size": 15510,
+      "required": false,
+      "os_target": [
+        "ios",
         "android"
       ],
       "dependencies": []
@@ -151,6 +165,20 @@
       "required": true,
       "os_target": [
         "ios"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "iOSKeychainAnalyzerPlugin",
+      "filename": "ios_keychain_analyzer.py",
+      "version": "1.0.0",
+      "description": "Analyze iOS Keychain metadata for credential inventory and forensic intelligence",
+      "sha256": "45b31a9a069bcb97df47d7e2a02e26a2a2b6d567d656606b7538d4cfe6a12ec1",
+      "size": 20537,
+      "required": false,
+      "os_target": [
+        "ios",
+        "android"
       ],
       "dependencies": []
     },
