@@ -51,17 +51,17 @@ class PluginProfile(BaseModel):
 class LoggingConfig(BaseModel):
     """Logging configuration model."""
 
-    level: str = Field("INFO", description="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
-    output: str = Field("console", description="Output mode (console, file, both)")
-    file_path: str = Field("logs/yaft.log", description="Log file path")
-    max_bytes: int = Field(10485760, description="Max log file size before rotation (bytes)")
-    backup_count: int = Field(5, description="Number of backup log files to keep")
-    include_timestamp: bool = Field(True, description="Include timestamps in log messages")
-    timestamp_format: str = Field("[%Y-%m-%d %H:%M:%S]", description="Timestamp format")
-    include_level: bool = Field(True, description="Include log level in messages")
-    include_name: bool = Field(False, description="Include logger name in messages")
-    rich_formatting: bool = Field(True, description="Use Rich formatting for console output")
-    rich_tracebacks: bool = Field(True, description="Show full tracebacks for exceptions")
+    level: str = Field(default="INFO", description="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    output: str = Field(default="console", description="Output mode (console, file, both)")
+    file_path: str = Field(default="logs/yaft.log", description="Log file path")
+    max_bytes: int = Field(default=10485760, description="Max log file size before rotation (bytes)")
+    backup_count: int = Field(default=5, description="Number of backup log files to keep")
+    include_timestamp: bool = Field(default=True, description="Include timestamps in log messages")
+    timestamp_format: str = Field(default="[%Y-%m-%d %H:%M:%S]", description="Timestamp format")
+    include_level: bool = Field(default=True, description="Include log level in messages")
+    include_name: bool = Field(default=False, description="Include logger name in messages")
+    rich_formatting: bool = Field(default=True, description="Use Rich formatting for console output")
+    rich_tracebacks: bool = Field(default=True, description="Show full tracebacks for exceptions")
 
     @field_validator("level")
     @classmethod
@@ -196,6 +196,7 @@ class CoreAPI:
 
         # Add console handler if needed
         if config.output in ["console", "both"]:
+            console_handler: logging.Handler
             if config.rich_formatting:
                 console_handler = RichHandler(
                     console=self.console,
