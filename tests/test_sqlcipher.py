@@ -369,10 +369,11 @@ class TestSQLCipherImportError:
         core_api.set_zip_file(zip_path)
 
         # Mock the import to simulate sqlcipher3 not being installed
+        original_import = __import__
         def mock_import(name, *args, **kwargs):
             if name == "sqlcipher3":
                 raise ImportError("No module named 'sqlcipher3'")
-            return __import__(name, *args, **kwargs)
+            return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr("builtins.__import__", mock_import)
 
@@ -396,10 +397,11 @@ class TestSQLCipherImportError:
         core_api.set_zip_file(zip_path)
 
         # Mock the import to simulate sqlcipher3 not being installed
+        original_import = __import__
         def mock_import(name, *args, **kwargs):
             if name == "sqlcipher3":
                 raise ImportError("No module named 'sqlcipher3'")
-            return __import__(name, *args, **kwargs)
+            return original_import(name, *args, **kwargs)
 
         monkeypatch.setattr("builtins.__import__", mock_import)
 
