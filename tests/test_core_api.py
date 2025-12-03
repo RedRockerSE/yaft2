@@ -871,3 +871,315 @@ def test_export_all_reports_to_pdf_with_missing_file(core_api, temp_dir):
     # Only the real report should be converted
     assert len(pdf_paths) == 1
     assert pdf_paths[0].exists()
+
+
+# ==============================================
+# HTML Export Tests
+# ==============================================
+
+
+def test_enable_html_export(core_api):
+    """Test enabling and disabling HTML export."""
+    # Initially disabled
+    assert core_api.is_html_export_enabled() is False
+
+    # Enable
+    core_api.enable_html_export(True)
+    assert core_api.is_html_export_enabled() is True
+
+    # Disable
+    core_api.enable_html_export(False)
+    assert core_api.is_html_export_enabled() is False
+
+
+def test_convert_markdown_to_html(core_api, temp_dir):
+    """Test converting markdown to HTML."""
+    pytest.importorskip("markdown")
+
+    # Create a markdown file
+    md_path = temp_dir / "test_report.md"
+    md_content = """# Test Report
+
+## Section 1
+
+This is a test report.
+
+## Section 2
+
+- Item 1
+- Item 2
+- Item 3
+
+| Column 1 | Column 2 |
+|----------|----------|
+| Value 1  | Value 2  |
+
+```python
+def example():
+    return "code block"
+```
+"""
+    md_path.write_text(md_content, encoding='utf-8')
+
+    # Convert to HTML
+    html_path = core_api.convert_markdown_to_html(md_path)
+
+    assert html_path.exists()
+    assert html_path.suffix == '.html'
+    assert html_path.stem == md_path.stem
+
+    # Check HTML content
+    html_content = html_path.read_text(encoding='utf-8')
+
+    # Verify HTML structure
+    assert '<!DOCTYPE html>' in html_content
+    assert '<html lang="en">' in html_content
+    assert '<meta charset="utf-8">' in html_content
+    assert '<title>Forensic Analysis Report</title>' in html_content
+
+    # Verify content is present
+    assert '<h1>Test Report</h1>' in html_content
+    assert '<h2>Section 1</h2>' in html_content
+    assert '<h2>Section 2</h2>' in html_content
+    assert '<li>Item 1</li>' in html_content
+    assert '<table>' in html_content
+    assert '<th>Column 1</th>' in html_content
+    assert '<td>Value 1</td>' in html_content
+    assert 'def example():' in html_content  # Verify code block content
+
+    # Verify CSS styling is included
+    assert '<style>' in html_content
+    assert 'font-family:' in html_content
+    assert '.container' in html_content
+
+
+def test_convert_markdown_to_html_custom_output(core_api, temp_dir):
+    """Test converting markdown to HTML with custom output path."""
+    pytest.importorskip("markdown")
+
+    md_path = temp_dir / "report.md"
+    md_path.write_text("# Test\n\nContent", encoding='utf-8')
+
+    custom_html = temp_dir / "custom_output.html"
+    result_path = core_api.convert_markdown_to_html(md_path, custom_html)
+
+    assert result_path == custom_html
+    assert custom_html.exists()
+
+    # Verify it's valid HTML
+    html_content = custom_html.read_text(encoding='utf-8')
+    assert '<!DOCTYPE html>' in html_content
+    assert '<h1>Test</h1>' in html_content
+
+
+def test_convert_markdown_to_html_file_not_found(core_api, temp_dir):
+    """Test HTML conversion with nonexistent markdown file."""
+    pytest.importorskip("markdown")
+
+    md_path = temp_dir / "nonexistent.md"
+
+    with pytest.raises(FileNotFoundError):
+        core_api.convert_markdown_to_html(md_path)
+
+
+def test_generate_report_with_html_export(core_api, temp_dir):
+    """Test generating report with HTML export enabled."""
+    pytest.importorskip("markdown")
+
+    # Set case identifiers for proper path structure
+    core_api.set_case_identifiers("examiner01", "CASE2024-01", "EV123")
+
+    # Enable HTML export
+    core_api.enable_html_export(True)
+
+    sections = [
+        {"heading": "Summary", "content": "Test summary"},
+        {"heading": "Details", "content": ["Detail 1", "Detail 2"], "style": "list"},
+        {"heading": "Statistics", "content": {"Total": 10, "Success": 8}, "style": "table"},
+    ]
+
+    md_path = core_api.generate_report("TestPlugin", "Test Report", sections)
+
+    # Check markdown report exists
+    assert md_path.exists()
+
+    # Check HTML was generated
+    html_path = md_path.with_suffix('.html')
+    assert html_path.exists()
+
+    # Verify HTML content
+    html_content = html_path.read_text(encoding='utf-8')
+    assert '<h1>Test Report</h1>' in html_content
+    assert '<h2>Summary</h2>' in html_content
+    assert '<h2>Details</h2>' in html_content
+    assert '<li>Detail 1</li>' in html_content
+    assert '<table>' in html_content
+
+    # Cleanup
+    core_api.enable_html_export(False)
+
+
+def test_export_all_reports_to_html(core_api, temp_dir):
+    """Test batch export of all reports to HTML."""
+    pytest.importorskip("markdown")
+
+    # Generate multiple reports
+    sections = [{"heading": "Test", "content": "Content"}]
+
+    core_api.generate_report("Plugin1", "Report 1", sections)
+    core_api.generate_report("Plugin2", "Report 2", sections)
+    core_api.generate_report("Plugin3", "Report 3", sections)
+
+    # Export all to HTML
+    html_paths = core_api.export_all_reports_to_html()
+
+    assert len(html_paths) == 3
+    for html_path in html_paths:
+        assert html_path.exists()
+        assert html_path.suffix == '.html'
+
+        # Verify each HTML file is valid
+        html_content = html_path.read_text(encoding='utf-8')
+        assert '<!DOCTYPE html>' in html_content
+        assert '<style>' in html_content
+
+
+def test_export_all_reports_to_html_empty(core_api):
+    """Test exporting when no reports have been generated."""
+    html_paths = core_api.export_all_reports_to_html()
+    assert html_paths == []
+
+
+def test_export_all_reports_to_html_with_missing_file(core_api, temp_dir):
+    """Test exporting reports when some markdown files are missing."""
+    pytest.importorskip("markdown")
+
+    # Generate a report
+    sections = [{"heading": "Test", "content": "Content"}]
+    md_path = core_api.generate_report("Plugin1", "Report 1", sections)
+
+    # Manually add a nonexistent path to the reports list
+    fake_path = temp_dir / "nonexistent.md"
+    core_api._generated_reports.append(fake_path)
+
+    # Should handle missing file gracefully
+    html_paths = core_api.export_all_reports_to_html()
+
+    # Only the real report should be converted
+    assert len(html_paths) == 1
+    assert html_paths[0].exists()
+
+
+def test_generate_report_with_both_pdf_and_html_export(core_api, temp_dir):
+    """Test generating report with both PDF and HTML export enabled."""
+    pytest.importorskip("markdown")
+    # Skip if weasyprint isn't available for PDF
+    try:
+        import weasyprint  # noqa: F401
+    except (ImportError, OSError) as e:
+        pytest.skip(f"WeasyPrint not available: {e}")
+
+    # Set case identifiers
+    core_api.set_case_identifiers("examiner01", "CASE2024-01", "EV123")
+
+    # Enable both PDF and HTML export
+    core_api.enable_pdf_export(True)
+    core_api.enable_html_export(True)
+
+    sections = [
+        {"heading": "Summary", "content": "Test summary"},
+        {"heading": "Details", "content": ["Detail 1", "Detail 2"], "style": "list"},
+    ]
+
+    md_path = core_api.generate_report("TestPlugin", "Test Report", sections)
+
+    # Check markdown report exists
+    assert md_path.exists()
+
+    # Check both PDF and HTML were generated
+    pdf_path = md_path.with_suffix('.pdf')
+    html_path = md_path.with_suffix('.html')
+
+    assert pdf_path.exists()
+    assert html_path.exists()
+
+    # Verify HTML content
+    html_content = html_path.read_text(encoding='utf-8')
+    assert '<h1>Test Report</h1>' in html_content
+
+    # Cleanup
+    core_api.enable_pdf_export(False)
+    core_api.enable_html_export(False)
+
+
+def test_html_export_with_complex_content(core_api, temp_dir):
+    """Test HTML export with complex markdown content including code blocks and tables."""
+    pytest.importorskip("markdown")
+
+    md_path = temp_dir / "complex_report.md"
+    md_content = """# Complex Report
+
+## Code Example
+
+```python
+def forensic_analysis():
+    evidence = load_evidence()
+    results = analyze(evidence)
+    return results
+```
+
+## Data Table
+
+| Artifact | Count | Risk Level |
+|----------|-------|------------|
+| Suspicious Files | 15 | High |
+| Modified Timestamps | 8 | Medium |
+| Deleted Items | 23 | Low |
+
+## List Items
+
+- Critical finding 1
+- Critical finding 2
+- Critical finding 3
+
+**Bold text** and *italic text* formatting.
+
+> This is a blockquote for important notes.
+
+---
+
+Horizontal rule above.
+"""
+    md_path.write_text(md_content, encoding='utf-8')
+
+    # Convert to HTML
+    html_path = core_api.convert_markdown_to_html(md_path)
+
+    assert html_path.exists()
+
+    html_content = html_path.read_text(encoding='utf-8')
+
+    # Verify code block
+    assert '<pre>' in html_content
+    assert 'class="language-python"' in html_content  # Code blocks get language class
+    assert 'def forensic_analysis():' in html_content
+
+    # Verify table
+    assert '<table>' in html_content
+    assert '<th>Artifact</th>' in html_content
+    assert '<td>Suspicious Files</td>' in html_content
+    assert '<td>15</td>' in html_content
+
+    # Verify list
+    assert '<ul>' in html_content
+    assert '<li>Critical finding 1</li>' in html_content
+
+    # Verify formatting
+    assert '<strong>Bold text</strong>' in html_content
+    assert '<em>italic text</em>' in html_content
+
+    # Verify blockquote
+    assert '<blockquote>' in html_content
+
+    # Verify horizontal rule
+    assert '<hr' in html_content

@@ -158,6 +158,10 @@ def run(
         bool,
         typer.Option("--pdf", help="Export all generated markdown reports to PDF format"),
     ] = False,
+    html_export: Annotated[
+        bool,
+        typer.Option("--html", help="Export all generated markdown reports to HTML format"),
+    ] = False,
     args: Annotated[
         list[str] | None, typer.Argument(help="Arguments to pass to the plugin(s)")
     ] = None,
@@ -183,6 +187,12 @@ def run(
 
         # Run with PDF export enabled
         yaft run --zip evidence.zip --profile ios_full_analysis.toml --pdf
+
+        # Run with HTML export enabled
+        yaft run --zip evidence.zip --profile ios_full_analysis.toml --html
+
+        # Run with both PDF and HTML export
+        yaft run --zip evidence.zip --profile ios_full_analysis.toml --pdf --html
     """
     core_api = get_core_api()
     plugin_manager = get_plugin_manager()
@@ -209,6 +219,10 @@ def run(
     # Enable PDF export if requested
     if pdf_export:
         core_api.enable_pdf_export(True)
+
+    # Enable HTML export if requested
+    if html_export:
+        core_api.enable_html_export(True)
 
     # Load ZIP file if provided
     if zip_file:
@@ -349,6 +363,24 @@ def run(
             )
         except Exception as e:
             core_api.print_error(f"PDF export failed: {e}")
+
+    # Export all reports to HTML if not already done (when --html flag is used)
+    # Note: Individual HTML files are created automatically during report generation if HTML export is enabled
+    # This is a fallback for batch conversion or if you want to ensure all reports are exported
+    if html_export and not core_api.is_html_export_enabled():
+        # Manual batch export (only if automatic export wasn't enabled)
+        try:
+            console.print("\n[bold cyan]Exporting reports to HTML...[/bold cyan]")
+            html_paths = core_api.export_all_reports_to_html()
+            if html_paths:
+                core_api.print_success(f"Exported {len(html_paths)} reports to HTML")
+        except ImportError:
+            core_api.print_error(
+                "HTML export requires 'markdown' package. "
+                "Install with: uv pip install markdown"
+            )
+        except Exception as e:
+            core_api.print_error(f"HTML export failed: {e}")
 
     # Close ZIP file if it was opened
     if zip_file:
