@@ -49,7 +49,7 @@ binaries += tmp_ret[1]
 hiddenimports += tmp_ret[2]
 
 # Collect dependencies
-for package in ['typer', 'rich', 'pydantic', 'pydantic_settings', 'toml']:
+for package in ['typer', 'rich', 'pydantic', 'pydantic_settings', 'toml', 'markdown']:
     tmp_ret = collect_all(package)
     datas += tmp_ret[0]
     binaries += tmp_ret[1]

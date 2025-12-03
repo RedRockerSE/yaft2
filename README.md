@@ -995,20 +995,22 @@ files = self.core_api.find_files_in_zip("*/databases/*.db")
 
 Automatically export markdown reports to professionally styled PDF and HTML formats:
 
-**Installation (Optional):**
+**Dependencies:**
+
+HTML export is **built-in** and available by default (uses the included `markdown` package). PDF export is **optional** and requires WeasyPrint.
+
 ```bash
-# Install PDF export dependencies (includes HTML export)
+# HTML export works out of the box!
+# No additional installation needed
+
+# For PDF export (optional)
 uv pip install -e ".[pdf]"
 
 # Or install manually
-# For both PDF and HTML
-uv pip install markdown weasyprint
-
-# For HTML only (lighter weight, no WeasyPrint needed)
-uv pip install markdown
+uv pip install weasyprint
 ```
 
-**Windows Note:** WeasyPrint requires GTK libraries for PDF export. Download GTK3 Runtime from [here](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and add to PATH. HTML export doesn't require GTK.
+**Windows Note:** WeasyPrint requires GTK libraries for PDF export. Download GTK3 Runtime from [here](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and add to PATH. HTML export doesn't require GTK and works immediately.
 
 **Usage:**
 ```bash
@@ -1026,8 +1028,9 @@ python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.t
 ```
 
 **Export Features:**
-- **PDF**: Blue color scheme with proper typography, A4 page format with proper margins
-- **HTML**: Responsive design, modern styling, browser-friendly layout
+- **Built-in HTML Export**: Works out of the box in all installations and executables
+- **PDF**: Blue color scheme with proper typography, A4 page format (optional, requires WeasyPrint)
+- **HTML**: Responsive design, modern styling, browser-friendly layout (built-in)
 - **Both Formats**: Tables, code blocks, lists, headings, blockquotes
 - **Automatic Generation**: Created alongside markdown reports when flags are used
 - **Flexible**: Generate PDF for archival, HTML for web viewing, or both

@@ -1310,18 +1310,17 @@ YaFT supports automatic export of markdown reports to both PDF and HTML formats 
 
 **Dependencies:**
 
-Both PDF and HTML export are **optional** and require additional packages. YaFT works perfectly without these dependencies - they're only needed if you want to generate PDF or HTML reports.
+HTML export is **built-in** and available by default (uses the included `markdown` package). PDF export is **optional** and requires WeasyPrint.
 
 ```bash
-# Install PDF export dependencies (includes HTML export)
+# HTML export works out of the box (markdown is a core dependency)
+# No additional installation needed!
+
+# For PDF export (optional)
 uv pip install -e ".[pdf]"
 
 # Or install manually
-# For both PDF and HTML
-uv pip install markdown weasyprint
-
-# For HTML only (lighter weight, no WeasyPrint needed)
-uv pip install markdown
+uv pip install weasyprint
 ```
 
 **Windows Installation:**
@@ -1397,8 +1396,9 @@ html_paths = self.core_api.export_all_reports_to_html()
 - **Automatic Generation**: PDFs/HTML files created alongside markdown when `--pdf`/`--html` flags are used
 - **Batch Conversion**: Convert all reports from a session with `export_all_reports_to_pdf()` or `export_all_reports_to_html()`
 - **Flexible Formats**: Generate PDF for archival, HTML for web viewing, or both
-- **Lightweight HTML**: HTML export only requires `markdown` package (no WeasyPrint needed)
-- **Graceful Degradation**: Falls back to markdown-only if export packages aren't installed
+- **Built-in HTML Export**: Works out of the box in all installations and executables
+- **Lightweight**: HTML export requires no additional dependencies (markdown is core)
+- **Graceful Degradation**: PDF falls back to markdown+HTML if WeasyPrint isn't installed
 
 ## Forensic Analysis Plugins
 
