@@ -133,9 +133,10 @@ class CoreAPI:
         self._case_id: str | None = None
         self._evidence_id: str | None = None
 
-        # PDF export configuration
+        # PDF/HTML export configuration
         self._enable_pdf_export: bool = False
-        self._generated_reports: list[Path] = []  # Track reports for batch PDF export
+        self._enable_html_export: bool = False
+        self._generated_reports: list[Path] = []  # Track reports for batch export
 
     def _load_logging_config(self) -> LoggingConfig:
         """
@@ -507,6 +508,28 @@ class CoreAPI:
             bool: True if PDF export is enabled
         """
         return self._enable_pdf_export
+
+    def enable_html_export(self, enabled: bool = True) -> None:
+        """
+        Enable or disable automatic HTML export for generated reports.
+
+        When enabled, all markdown reports will also be exported as HTML files.
+
+        Args:
+            enabled: True to enable HTML export, False to disable
+        """
+        self._enable_html_export = enabled
+        if enabled:
+            self.log_info("HTML export enabled for reports")
+
+    def is_html_export_enabled(self) -> bool:
+        """
+        Check if HTML export is enabled.
+
+        Returns:
+            bool: True if HTML export is enabled
+        """
+        return self._enable_html_export
 
     def get_generated_reports(self) -> list[Path]:
         """
@@ -2969,6 +2992,217 @@ class CoreAPI:
             self.log_error(f"Failed to convert markdown to PDF: {e}")
             raise
 
+    def convert_markdown_to_html(self, markdown_path: Path, html_path: Path | None = None) -> Path:
+        """
+        Convert a markdown file to HTML format.
+
+        Args:
+            markdown_path: Path to the markdown file
+            html_path: Optional path for the HTML output (defaults to same name with .html extension)
+
+        Returns:
+            Path: Path to generated HTML file
+
+        Raises:
+            ImportError: If markdown package is not installed
+            FileNotFoundError: If markdown file doesn't exist
+            Exception: If HTML conversion fails
+        """
+        try:
+            import markdown
+        except ImportError as e:
+            error_msg = (
+                "HTML export requires 'markdown' package. "
+                "Install with: uv pip install markdown"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        if not markdown_path.exists():
+            raise FileNotFoundError(f"Markdown file not found: {markdown_path}")
+
+        # Default HTML path
+        if html_path is None:
+            html_path = markdown_path.with_suffix('.html')
+
+        try:
+            # Read markdown content
+            md_content = markdown_path.read_text(encoding='utf-8')
+
+            # Convert markdown to HTML with extensions for better formatting
+            html_body = markdown.markdown(
+                md_content,
+                extensions=['tables', 'fenced_code', 'nl2br']
+            )
+
+            # Add CSS styling for professional HTML output
+            css_style = """
+            <style>
+                body {
+                    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+                    font-size: 16px;
+                    line-height: 1.6;
+                    color: #333;
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    background-color: #f9f9f9;
+                }
+                .container {
+                    background-color: white;
+                    padding: 40px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                h1 {
+                    font-size: 2.5em;
+                    color: #2c3e50;
+                    border-bottom: 4px solid #3498db;
+                    padding-bottom: 15px;
+                    margin-top: 0;
+                    margin-bottom: 30px;
+                }
+                h2 {
+                    font-size: 1.8em;
+                    color: #34495e;
+                    border-bottom: 2px solid #bdc3c7;
+                    padding-bottom: 10px;
+                    margin-top: 30px;
+                    margin-bottom: 15px;
+                }
+                h3 {
+                    font-size: 1.4em;
+                    color: #34495e;
+                    margin-top: 25px;
+                    margin-bottom: 12px;
+                }
+                h4 {
+                    font-size: 1.2em;
+                    color: #34495e;
+                    margin-top: 20px;
+                    margin-bottom: 10px;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 20px 0;
+                    font-size: 0.95em;
+                    box-shadow: 0 2px 3px rgba(0,0,0,0.1);
+                }
+                th {
+                    background-color: #3498db;
+                    color: white;
+                    font-weight: bold;
+                    padding: 12px 15px;
+                    text-align: left;
+                    border: 1px solid #2980b9;
+                }
+                td {
+                    padding: 10px 15px;
+                    border: 1px solid #ddd;
+                }
+                tr:nth-child(even) {
+                    background-color: #f8f9fa;
+                }
+                tr:hover {
+                    background-color: #e8f4f8;
+                }
+                code {
+                    background-color: #f4f4f4;
+                    padding: 3px 8px;
+                    border-radius: 4px;
+                    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                    font-size: 0.9em;
+                    color: #c7254e;
+                }
+                pre {
+                    background-color: #2c3e50;
+                    color: #ecf0f1;
+                    padding: 20px;
+                    border-radius: 6px;
+                    overflow-x: auto;
+                    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+                    font-size: 0.9em;
+                    line-height: 1.5;
+                    box-shadow: 0 2px 3px rgba(0,0,0,0.1);
+                }
+                pre code {
+                    background-color: transparent;
+                    color: inherit;
+                    padding: 0;
+                }
+                ul, ol {
+                    margin: 15px 0;
+                    padding-left: 40px;
+                }
+                li {
+                    margin: 8px 0;
+                }
+                hr {
+                    border: none;
+                    border-top: 2px solid #bdc3c7;
+                    margin: 30px 0;
+                }
+                strong {
+                    color: #2c3e50;
+                    font-weight: 600;
+                }
+                em {
+                    color: #555;
+                }
+                a {
+                    color: #3498db;
+                    text-decoration: none;
+                }
+                a:hover {
+                    text-decoration: underline;
+                }
+                blockquote {
+                    border-left: 4px solid #3498db;
+                    padding-left: 20px;
+                    margin: 20px 0;
+                    color: #555;
+                    font-style: italic;
+                }
+                .footer {
+                    margin-top: 50px;
+                    padding-top: 20px;
+                    border-top: 2px solid #bdc3c7;
+                    text-align: center;
+                    color: #7f8c8d;
+                    font-size: 0.9em;
+                }
+            </style>
+            """
+
+            # Combine CSS and HTML in a complete document
+            full_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="YaFT (Yet Another Forensic Tool)">
+    <title>Forensic Analysis Report</title>
+    {css_style}
+</head>
+<body>
+    <div class="container">
+        {html_body}
+    </div>
+</body>
+</html>
+"""
+
+            # Write HTML file
+            html_path.write_text(full_html, encoding='utf-8')
+
+            self.log_info(f"HTML generated: {html_path}")
+            return html_path
+
+        except Exception as e:
+            self.log_error(f"Failed to convert markdown to HTML: {e}")
+            raise
+
     def generate_report(
         self,
         plugin_name: str,
@@ -3153,6 +3387,19 @@ class CoreAPI:
             except Exception as e:
                 self.log_warning(f"Failed to generate PDF: {e}")
 
+        # Generate HTML if enabled
+        if self._enable_html_export:
+            try:
+                html_path = self.convert_markdown_to_html(report_path)
+                self.log_info(f"HTML export: {html_path}")
+            except ImportError:
+                self.log_warning(
+                    "HTML export is enabled but required packages are not installed. "
+                    "Install with: uv pip install markdown"
+                )
+            except Exception as e:
+                self.log_warning(f"Failed to generate HTML: {e}")
+
         return report_path
 
     def save_report_attachment(
@@ -3239,6 +3486,54 @@ class CoreAPI:
         )
 
         return pdf_paths
+
+    def export_all_reports_to_html(self) -> list[Path]:
+        """
+        Export all generated markdown reports from the current session to HTML format.
+
+        This method processes all reports tracked during the current session and
+        generates corresponding HTML files. Useful for batch conversion at the end
+        of a forensic analysis workflow.
+
+        Returns:
+            list[Path]: List of paths to generated HTML files
+
+        Raises:
+            ImportError: If markdown package is not installed
+        """
+        if not self._generated_reports:
+            self.log_info("No reports to export to HTML")
+            return []
+
+        self.log_info(f"Exporting {len(self._generated_reports)} reports to HTML...")
+
+        html_paths: list[Path] = []
+        success_count = 0
+        failed_count = 0
+
+        for md_path in self._generated_reports:
+            if not md_path.exists():
+                self.log_warning(f"Markdown file not found, skipping: {md_path}")
+                failed_count += 1
+                continue
+
+            try:
+                html_path = self.convert_markdown_to_html(md_path)
+                html_paths.append(html_path)
+                success_count += 1
+            except ImportError as e:
+                # Re-raise ImportError since user needs to install dependencies
+                raise
+            except Exception as e:
+                self.log_error(f"Failed to export {md_path.name} to HTML: {e}")
+                failed_count += 1
+
+        # Summary
+        self.log_info(
+            f"HTML export complete: {success_count} successful, {failed_count} failed"
+        )
+
+        return html_paths
 
     def load_plugin_profile(self, profile_path: Path) -> PluginProfile:
         """

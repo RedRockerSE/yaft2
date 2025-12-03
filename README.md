@@ -21,7 +21,7 @@ Contact: magjon@gmail.com
 - **Automatic Plugin Updates**: Built-in update system to sync plugins from GitHub with SHA256 verification and offline caching
 - **Beautiful CLI**: Color-coded output with Rich and Typer for forensic reporting
 - **Case Management**: Forensic case identifier support (Examiner ID, Case ID, Evidence ID) with automatic validation and report organization
-- **PDF Export**: Automatically export markdown reports to professionally styled PDF documents
+- **PDF/HTML Export**: Automatically export markdown reports to professionally styled PDF and HTML documents
 - **Production Forensic Plugins**: Ready-to-use iOS and Android analysis plugins for device info, apps, permissions, and call logs
 - **Type-Safe**: Full type hints with Pydantic validation
 - **Cross-Platform**: Build standalone executables for Windows and Linux
@@ -991,33 +991,46 @@ files = self.core_api.find_files_in_zip("*/databases/*.db")
 - `*pattern*` - Files containing pattern
 - `path/*/file.ext` - Wildcards in paths
 
-### PDF Export
+### PDF and HTML Export
 
-Automatically export markdown reports to professionally styled PDFs:
+Automatically export markdown reports to professionally styled PDF and HTML formats:
 
 **Installation (Optional):**
 ```bash
-# Install PDF export dependencies
+# Install PDF export dependencies (includes HTML export)
 uv pip install -e ".[pdf]"
 
 # Or install manually
+# For both PDF and HTML
 uv pip install markdown weasyprint
+
+# For HTML only (lighter weight, no WeasyPrint needed)
+uv pip install markdown
 ```
 
-**Windows Note:** WeasyPrint requires GTK libraries. Download GTK3 Runtime from [here](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and add to PATH.
+**Windows Note:** WeasyPrint requires GTK libraries for PDF export. Download GTK3 Runtime from [here](https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases) and add to PATH. HTML export doesn't require GTK.
 
 **Usage:**
 ```bash
 # Enable PDF export with --pdf flag
 python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip --pdf
-python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml --pdf
+
+# Enable HTML export with --html flag
+python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip --html
+
+# Enable both PDF and HTML export
+python -m yaft.cli run iOSDeviceInfoExtractorPlugin --zip evidence.zip --pdf --html
+
+# Works with profiles too
+python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml --pdf --html
 ```
 
-PDFs are generated with professional styling including:
-- Blue color scheme with proper typography
-- Tables, code blocks, lists, headings
-- A4 page format with proper margins
-- Automatic generation alongside markdown reports
+**Export Features:**
+- **PDF**: Blue color scheme with proper typography, A4 page format with proper margins
+- **HTML**: Responsive design, modern styling, browser-friendly layout
+- **Both Formats**: Tables, code blocks, lists, headings, blockquotes
+- **Automatic Generation**: Created alongside markdown reports when flags are used
+- **Flexible**: Generate PDF for archival, HTML for web viewing, or both
 
 ### Forensic Format Detection
 
