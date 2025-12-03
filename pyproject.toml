@@ -1,6 +1,6 @@
 [project]
 name = "yaft"
-version = "0.3.4"
+version = "0.3.5"
 description = "Yet Another Forensic Tool - A plugin-based forensic analysis tool"
 authors = [
     {name = "Magnus Jonsson", email = "magjon@gmail.com"}
