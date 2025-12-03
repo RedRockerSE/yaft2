@@ -382,6 +382,8 @@ The CoreAPI provides useful functionality to plugins:
 ```python
 def execute(self, *args: Any, **kwargs: Any) -> Any:
     # ========== Logging ==========
+    # Note: Logging behavior is configurable via config/logging.toml
+    # See "Logging Configuration" section in Advanced Topics for details
     self.core_api.log_info("Information message")
     self.core_api.log_warning("Warning message")
     self.core_api.log_error("Error message")
@@ -1309,6 +1311,101 @@ def initialize(self) -> None:
         import toml
         self.config = toml.load(config_path)
 ```
+
+### Logging Configuration
+
+YAFT provides flexible logging configuration through a TOML configuration file. Control log levels, output destinations (console, file, or both), and formatting options for forensic analysis workflows.
+
+**Configuration File:** `config/logging.toml`
+
+**Quick Configuration Examples:**
+
+```toml
+# Console output only (default)
+[logging]
+level = "INFO"
+output = "console"
+
+# File output for production/automation
+[logging]
+level = "DEBUG"
+output = "file"
+file_path = "logs/yaft.log"
+
+# Both console and file (recommended for forensic analysis)
+[logging]
+level = "INFO"
+output = "both"
+file_path = "logs/forensic_analysis.log"
+```
+
+**Available Log Levels:**
+- `DEBUG` - Detailed diagnostic information (plugin initialization, file operations)
+- `INFO` - General informational messages (default - plugin execution, processing)
+- `WARNING` - Warning messages for potential issues
+- `ERROR` - Error messages for serious problems
+- `CRITICAL` - Critical errors that may cause program failure
+
+**Key Features:**
+- **Multiple Output Modes**: Log to console, file, or both simultaneously
+- **File Rotation**: Automatic log rotation based on file size (configurable max size and backup count)
+- **Rich Formatting**: Beautiful console output with colors and syntax highlighting
+- **Customizable Format**: Configure timestamps, log levels, and logger names
+- **Case-Organized Logs**: Support for storing logs in case-specific directories
+- **Graceful Fallback**: Uses sensible defaults if config file is missing or invalid
+
+**Output Organization:**
+
+Console logs use Rich formatting with colors and syntax highlighting. File logs are written to `yaft_output/logs/yaft.log` by default, with support for:
+- Automatic rotation when files reach maximum size
+- Numbered backup files (e.g., `yaft.log.1`, `yaft.log.2`)
+- Absolute paths for custom log locations
+- Relative paths (relative to `yaft_output/` directory)
+
+**Complete Configuration Options:**
+
+```toml
+[logging]
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+level = "INFO"
+
+# Output mode: console, file, both
+output = "console"
+
+# Log file path (used when output is "file" or "both")
+# Relative paths are relative to yaft_output directory
+file_path = "logs/yaft.log"
+
+# Log file rotation settings
+max_bytes = 10485760  # 10 MB
+backup_count = 5      # Keep 5 backup files
+
+# Format options
+[logging.format]
+include_timestamp = true
+timestamp_format = "[%Y-%m-%d %H:%M:%S]"
+include_level = true
+include_name = false
+rich_formatting = true     # Rich colored output (console only)
+rich_tracebacks = true     # Full tracebacks with syntax highlighting
+```
+
+**Programmatic Access in Plugins:**
+
+```python
+# Use logging methods in plugin code
+self.core_api.log_debug("Detailed diagnostic message")
+self.core_api.log_info("General informational message")
+self.core_api.log_warning("Warning about potential issue")
+self.core_api.log_error("Error message")
+```
+
+**Best Practices:**
+1. **Development**: Use `DEBUG` level with console output for immediate feedback
+2. **Production**: Use `INFO` level with file output for audit trails
+3. **Forensic Analysis**: Use `both` output mode to see progress while maintaining logs
+4. **Long-running operations**: Enable file logging with rotation to prevent disk space issues
+5. **Sensitive cases**: Store logs in case-specific directories using absolute paths
 
 ### Hot Reloading (Development)
 

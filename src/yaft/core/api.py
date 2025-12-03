@@ -5,6 +5,7 @@ This module exposes common services and utilities that plugins can use.
 """
 
 import logging
+import logging.handlers
 import plistlib
 import sqlite3
 import tempfile
@@ -47,6 +48,42 @@ class PluginProfile(BaseModel):
         return v
 
 
+class LoggingConfig(BaseModel):
+    """Logging configuration model."""
+
+    level: str = Field("INFO", description="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
+    output: str = Field("console", description="Output mode (console, file, both)")
+    file_path: str = Field("logs/yaft.log", description="Log file path")
+    max_bytes: int = Field(10485760, description="Max log file size before rotation (bytes)")
+    backup_count: int = Field(5, description="Number of backup log files to keep")
+    include_timestamp: bool = Field(True, description="Include timestamps in log messages")
+    timestamp_format: str = Field("[%Y-%m-%d %H:%M:%S]", description="Timestamp format")
+    include_level: bool = Field(True, description="Include log level in messages")
+    include_name: bool = Field(False, description="Include logger name in messages")
+    rich_formatting: bool = Field(True, description="Use Rich formatting for console output")
+    rich_tracebacks: bool = Field(True, description="Show full tracebacks for exceptions")
+
+    @field_validator("level")
+    @classmethod
+    def validate_level(cls, v: str) -> str:
+        """Validate log level."""
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        v_upper = v.upper()
+        if v_upper not in valid_levels:
+            raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
+        return v_upper
+
+    @field_validator("output")
+    @classmethod
+    def validate_output(cls, v: str) -> str:
+        """Validate output mode."""
+        valid_outputs = ["console", "file", "both"]
+        v_lower = v.lower()
+        if v_lower not in valid_outputs:
+            raise ValueError(f"Invalid output mode: {v}. Must be one of {valid_outputs}")
+        return v_lower
+
+
 class CoreAPI:
     """
     Core API providing shared functionality to plugins.
@@ -60,20 +97,27 @@ class CoreAPI:
     - Inter-plugin communication
     """
 
-    def __init__(self, config_dir: Path | None = None) -> None:
+    def __init__(self, config_dir: Path | None = None, base_output_dir: Path | None = None) -> None:
         """
         Initialize the Core API.
 
         Args:
             config_dir: Optional configuration directory path
+            base_output_dir: Optional base output directory (used for logs)
         """
         self.config_dir = config_dir or Path.cwd() / "config"
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
+        # Base output directory (default: yaft_output)
+        self.base_output_dir = base_output_dir or Path.cwd() / "yaft_output"
+
         # Initialize Rich console for beautiful output
         self.console = Console()
 
-        # Setup logging with Rich handler
+        # Load logging configuration
+        self._logging_config = self._load_logging_config()
+
+        # Setup logging with configuration
         self._setup_logging()
 
         # Storage for shared data between plugins
@@ -93,15 +137,106 @@ class CoreAPI:
         self._enable_pdf_export: bool = False
         self._generated_reports: list[Path] = []  # Track reports for batch PDF export
 
+    def _load_logging_config(self) -> LoggingConfig:
+        """
+        Load logging configuration from TOML file.
+
+        Returns:
+            LoggingConfig: Loaded configuration or default config if file doesn't exist
+        """
+        config_file = self.config_dir / "logging.toml"
+
+        if not config_file.exists():
+            # Return default configuration
+            return LoggingConfig()
+
+        try:
+            with open(config_file, encoding="utf-8") as f:
+                config_data = toml.load(f)
+
+            # Extract logging section
+            logging_section = config_data.get("logging", {})
+
+            # Extract format section if present
+            format_section = logging_section.get("format", {})
+
+            # Merge format options into main config
+            merged_config = {**logging_section, **format_section}
+
+            # Remove the nested format dict if it exists
+            merged_config.pop("format", None)
+
+            return LoggingConfig(**merged_config)
+        except Exception as e:
+            # If config is invalid, print warning and use defaults
+            self.console.print(f"[bold yellow][WARNING][/bold yellow] Failed to load logging config: {e}")
+            self.console.print("[bold yellow][WARNING][/bold yellow] Using default logging configuration")
+            return LoggingConfig()
+
     def _setup_logging(self) -> None:
-        """Configure logging with Rich handler."""
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(message)s",
-            datefmt="[%X]",
-            handlers=[RichHandler(console=self.console, rich_tracebacks=True)],
-        )
+        """Configure logging based on loaded configuration."""
+        config = self._logging_config
+
+        # Get log level
+        log_level = getattr(logging, config.level)
+
+        # Build format string
+        format_parts = []
+        if config.include_timestamp:
+            format_parts.append("%(asctime)s")
+        if config.include_level:
+            format_parts.append("%(levelname)s")
+        if config.include_name:
+            format_parts.append("%(name)s")
+        format_parts.append("%(message)s")
+        format_string = " - ".join(format_parts) if len(format_parts) > 1 else "%(message)s"
+
+        # Prepare handlers list
+        handlers: list[logging.Handler] = []
+
+        # Add console handler if needed
+        if config.output in ["console", "both"]:
+            if config.rich_formatting:
+                console_handler = RichHandler(
+                    console=self.console,
+                    rich_tracebacks=config.rich_tracebacks,
+                    show_time=config.include_timestamp,
+                    show_level=config.include_level,
+                    show_path=False,
+                )
+                console_handler.setFormatter(logging.Formatter("%(message)s"))
+            else:
+                console_handler = logging.StreamHandler()
+                console_handler.setFormatter(
+                    logging.Formatter(format_string, datefmt=config.timestamp_format)
+                )
+            handlers.append(console_handler)
+
+        # Add file handler if needed
+        if config.output in ["file", "both"]:
+            # Resolve log file path
+            log_path = Path(config.file_path)
+            if not log_path.is_absolute():
+                log_path = self.base_output_dir / log_path
+
+            # Ensure log directory exists
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Create rotating file handler
+            file_handler = logging.handlers.RotatingFileHandler(
+                log_path,
+                maxBytes=config.max_bytes,
+                backupCount=config.backup_count,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(logging.Formatter(format_string, datefmt=config.timestamp_format))
+            handlers.append(file_handler)
+
+        # Configure logging
+        logging.basicConfig(level=log_level, format=format_string, handlers=handlers, force=True)
+
         self.logger = logging.getLogger("yaft")
+        self.logger.setLevel(log_level)  # Explicitly set level on yaft logger
 
     def log_info(self, message: str) -> None:
         """Log an info message."""
@@ -465,6 +600,19 @@ class CoreAPI:
             self._zip_handle = None
             self._current_zip = None
             self._detected_os = ExtractionOS.UNKNOWN
+
+    def close_logging_handlers(self) -> None:
+        """Close all logging handlers to release file locks."""
+        # Close handlers on both yaft logger and root logger
+        for handler in self.logger.handlers[:]:
+            handler.close()
+            self.logger.removeHandler(handler)
+
+        # Also close root logger handlers (where basicConfig adds them)
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            handler.close()
+            root_logger.removeHandler(handler)
 
     # ========== OS Detection Methods ==========
 
