@@ -1,8 +1,0 @@
-# YAFT GUI Requirements
-# Python 3.12+
-
-# GUI Framework
-PySide6>=6.6.0
-
-# Build Dependencies (optional, for development)
-# Install with: uv pip install -r requirements-dev.txt
