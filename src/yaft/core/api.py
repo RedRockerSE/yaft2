@@ -1259,6 +1259,198 @@ class CoreAPI:
 
         self.log_info(f"Exported data to: {output_path}")
 
+    def export_plugin_data_to_csv(
+        self,
+        output_path: Path,
+        plugin_name: str,
+        plugin_version: str,
+        data: list[dict[str, Any]],
+        extraction_type: str = "unknown",
+        include_metadata: bool = True,
+    ) -> None:
+        """
+        Export plugin data to CSV file with standardized format.
+
+        Args:
+            output_path: Path where CSV file should be written
+            plugin_name: Name of the plugin
+            plugin_version: Version of the plugin
+            data: List of dictionaries to export (each dict becomes a row)
+            extraction_type: Type of extraction ("cellebrite", "graykey", "unknown")
+            include_metadata: Whether to include metadata rows at the top (default: True)
+
+        Examples:
+            >>> api.export_plugin_data_to_csv(
+            ...     Path("output.csv"),
+            ...     "MyPlugin",
+            ...     "1.0.0",
+            ...     [{"name": "John", "age": 30}, {"name": "Jane", "age": 25}],
+            ...     "cellebrite"
+            ... )
+
+        Note:
+            - If include_metadata=True, the first few rows contain metadata (plugin name, version, etc.)
+            - A blank row separates metadata from data
+            - All dictionary values are converted to strings
+            - Nested structures are converted to JSON strings
+        """
+        import csv
+        import json
+        from datetime import datetime, UTC
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, 'w', encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+
+            # Write metadata header if requested
+            if include_metadata:
+                writer.writerow(["Plugin Name", plugin_name])
+                writer.writerow(["Plugin Version", plugin_version])
+                writer.writerow(["Extraction Source", extraction_type])
+                writer.writerow(["Processing Timestamp", datetime.now(UTC).isoformat()])
+                writer.writerow([])  # Blank row separator
+
+            # If data is empty, just write headers
+            if not data:
+                self.log_warning("No data to export to CSV")
+                return
+
+            # Get all unique keys from all dictionaries to create comprehensive headers
+            all_keys = []
+            for row in data:
+                for key in row.keys():
+                    if key not in all_keys:
+                        all_keys.append(key)
+
+            # Write CSV header
+            writer.writerow(all_keys)
+
+            # Write data rows
+            for row_dict in data:
+                row_values = []
+                for key in all_keys:
+                    value = row_dict.get(key, "")
+                    # Convert complex types to JSON strings
+                    if isinstance(value, (dict, list)):
+                        value = json.dumps(value, ensure_ascii=False)
+                    elif value is None:
+                        value = ""
+                    else:
+                        value = str(value)
+                    row_values.append(value)
+                writer.writerow(row_values)
+
+        self.log_info(f"Exported {len(data)} rows to CSV: {output_path}")
+
+    # ========== Base64 Encoding/Decoding Methods ==========
+
+    def base64_encode(self, data: bytes) -> str:
+        """
+        Encode bytes to base64 string.
+
+        Args:
+            data: Raw bytes to encode
+
+        Returns:
+            str: Base64-encoded string
+
+        Examples:
+            >>> encoded = api.base64_encode(b"Hello, World!")
+            >>> print(encoded)
+            'SGVsbG8sIFdvcmxkIQ=='
+
+            >>> # Encode BLOB data from database
+            >>> blob = api.extract_blob_from_zip("db.db", "SELECT photo FROM users WHERE id=1")
+            >>> if blob:
+            ...     encoded = api.base64_encode(blob)
+            ...     # Store encoded string in JSON or text file
+        """
+        import base64
+        return base64.b64encode(data).decode('ascii')
+
+    def base64_decode(self, encoded_string: str) -> bytes:
+        """
+        Decode base64 string to bytes.
+
+        Args:
+            encoded_string: Base64-encoded string
+
+        Returns:
+            bytes: Decoded raw bytes
+
+        Raises:
+            ValueError: If the string is not valid base64
+
+        Examples:
+            >>> decoded = api.base64_decode('SGVsbG8sIFdvcmxkIQ==')
+            >>> print(decoded)
+            b'Hello, World!'
+
+            >>> # Decode base64 image data
+            >>> encoded_image = "iVBORw0KGgoAAAANSUhEUgAAAA..."
+            >>> image_bytes = api.base64_decode(encoded_image)
+            >>> api.save_blob_as_file(image_bytes, Path("output/image.png"))
+        """
+        import base64
+        try:
+            return base64.b64decode(encoded_string)
+        except Exception as e:
+            raise ValueError(f"Invalid base64 string: {e}") from e
+
+    def base64_encode_file(self, file_path: str | Path) -> str:
+        """
+        Read a file from the ZIP and encode it to base64.
+
+        Args:
+            file_path: Path to file within ZIP archive (or local Path object)
+
+        Returns:
+            str: Base64-encoded file content
+
+        Examples:
+            >>> # Encode file from ZIP
+            >>> encoded = api.base64_encode_file("path/to/image.png")
+
+            >>> # Encode local file
+            >>> encoded = api.base64_encode_file(Path("local/file.dat"))
+        """
+        if isinstance(file_path, (str, Path)) and Path(file_path).exists():
+            # Local file
+            with open(file_path, 'rb') as f:
+                data = f.read()
+        else:
+            # File in ZIP
+            data = self.read_zip_file(str(file_path))
+
+        return self.base64_encode(data)
+
+    def base64_decode_to_file(self, encoded_string: str, output_path: Path) -> Path:
+        """
+        Decode base64 string and save to file.
+
+        Args:
+            encoded_string: Base64-encoded string
+            output_path: Path where decoded file should be saved
+
+        Returns:
+            Path: Path to the saved file
+
+        Examples:
+            >>> encoded_data = "SGVsbG8sIFdvcmxkIQ=="
+            >>> output = api.base64_decode_to_file(encoded_data, Path("output/decoded.txt"))
+            >>> print(output)
+            WindowsPath('output/decoded.txt')
+        """
+        data = self.base64_decode(encoded_string)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_path, 'wb') as f:
+            f.write(data)
+
+        self.log_info(f"Decoded base64 data to: {output_path}")
+        return output_path
+
     # ========== Plist Parsing Methods ==========
 
     def parse_plist(self, content: bytes) -> Any:

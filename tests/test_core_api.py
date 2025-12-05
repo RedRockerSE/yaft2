@@ -1183,3 +1183,408 @@ Horizontal rule above.
 
     # Verify horizontal rule
     assert '<hr' in html_content
+
+
+# ========== Base64 Encoding/Decoding Tests ==========
+
+
+def test_base64_encode_basic(core_api):
+    """Test basic base64 encoding."""
+    data = b"Hello, World!"
+    encoded = core_api.base64_encode(data)
+
+    assert encoded == "SGVsbG8sIFdvcmxkIQ=="
+    assert isinstance(encoded, str)
+
+
+def test_base64_decode_basic(core_api):
+    """Test basic base64 decoding."""
+    encoded = "SGVsbG8sIFdvcmxkIQ=="
+    decoded = core_api.base64_decode(encoded)
+
+    assert decoded == b"Hello, World!"
+    assert isinstance(decoded, bytes)
+
+
+def test_base64_encode_decode_roundtrip(core_api):
+    """Test encoding and decoding roundtrip."""
+    original = b"Test data with special chars: \x00\x01\x02\xFF"
+    encoded = core_api.base64_encode(original)
+    decoded = core_api.base64_decode(encoded)
+
+    assert decoded == original
+
+
+def test_base64_encode_empty(core_api):
+    """Test encoding empty bytes."""
+    encoded = core_api.base64_encode(b"")
+    assert encoded == ""
+
+
+def test_base64_decode_empty(core_api):
+    """Test decoding empty string."""
+    decoded = core_api.base64_decode("")
+    assert decoded == b""
+
+
+def test_base64_decode_invalid(core_api):
+    """Test decoding invalid base64 raises ValueError."""
+    with pytest.raises(ValueError, match="Invalid base64 string"):
+        core_api.base64_decode("Not valid base64!!!")
+
+
+def test_base64_encode_file_from_zip(core_api, temp_dir):
+    """Test encoding a file from ZIP archive."""
+    # Create ZIP with test file
+    zip_path = temp_dir / "test.zip"
+    test_content = b"Binary test data \x00\xFF"
+
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr("test_file.bin", test_content)
+
+    core_api.set_zip_file(zip_path)
+
+    # Encode file from ZIP
+    encoded = core_api.base64_encode_file("test_file.bin")
+
+    # Verify
+    decoded = core_api.base64_decode(encoded)
+    assert decoded == test_content
+
+
+def test_base64_encode_local_file(core_api, temp_dir):
+    """Test encoding a local file."""
+    # Create local file
+    local_file = temp_dir / "local_test.bin"
+    test_content = b"Local file content \x00\x01\x02"
+    local_file.write_bytes(test_content)
+
+    # Encode local file
+    encoded = core_api.base64_encode_file(local_file)
+
+    # Verify
+    decoded = core_api.base64_decode(encoded)
+    assert decoded == test_content
+
+
+def test_base64_decode_to_file(core_api, temp_dir):
+    """Test decoding base64 to file."""
+    encoded = "SGVsbG8sIFdvcmxkIQ=="
+    output_path = temp_dir / "decoded_output.txt"
+
+    # Decode to file
+    result_path = core_api.base64_decode_to_file(encoded, output_path)
+
+    # Verify
+    assert result_path == output_path
+    assert output_path.exists()
+    assert output_path.read_bytes() == b"Hello, World!"
+
+
+def test_base64_decode_to_file_creates_directories(core_api, temp_dir):
+    """Test that decode_to_file creates parent directories."""
+    encoded = "VGVzdCBkYXRh"  # "Test data"
+    output_path = temp_dir / "subdir" / "nested" / "file.bin"
+
+    # Decode to file (should create directories)
+    result_path = core_api.base64_decode_to_file(encoded, output_path)
+
+    # Verify
+    assert result_path == output_path
+    assert output_path.exists()
+    assert output_path.read_bytes() == b"Test data"
+
+
+def test_base64_encode_binary_blob(core_api):
+    """Test encoding binary BLOB data (simulating database extraction)."""
+    # Simulate JPEG header (magic bytes)
+    jpeg_header = b"\xFF\xD8\xFF\xE0\x00\x10JFIF"
+    encoded = core_api.base64_encode(jpeg_header)
+
+    # Should be valid base64
+    assert isinstance(encoded, str)
+
+    # Should decode back correctly
+    decoded = core_api.base64_decode(encoded)
+    assert decoded == jpeg_header
+
+
+# ========== CSV Export Tests ==========
+
+
+def test_csv_export_basic(core_api, temp_dir):
+    """Test basic CSV export."""
+    import csv
+
+    data = [
+        {"name": "John Doe", "age": 30, "city": "New York"},
+        {"name": "Jane Smith", "age": 25, "city": "Los Angeles"},
+    ]
+
+    output_path = temp_dir / "test_export.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=data,
+        extraction_type="test",
+        include_metadata=True,
+    )
+
+    # Verify file exists
+    assert output_path.exists()
+
+    # Read and verify content
+    with open(output_path, 'r', encoding='utf-8', newline='') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    # Check metadata rows
+    assert rows[0] == ["Plugin Name", "TestPlugin"]
+    assert rows[1] == ["Plugin Version", "1.0.0"]
+    assert rows[2] == ["Extraction Source", "test"]
+    assert rows[3][0] == "Processing Timestamp"  # Timestamp varies
+    assert rows[4] == []  # Blank separator
+
+    # Check data header and rows
+    assert rows[5] == ["name", "age", "city"]
+    assert rows[6] == ["John Doe", "30", "New York"]
+    assert rows[7] == ["Jane Smith", "25", "Los Angeles"]
+
+
+def test_csv_export_without_metadata(core_api, temp_dir):
+    """Test CSV export without metadata header."""
+    import csv
+
+    data = [
+        {"name": "Alice", "score": 95},
+        {"name": "Bob", "score": 87},
+    ]
+
+    output_path = temp_dir / "no_metadata.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=data,
+        extraction_type="test",
+        include_metadata=False,
+    )
+
+    # Read and verify content
+    with open(output_path, 'r', encoding='utf-8', newline='') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    # Should start directly with data header
+    assert rows[0] == ["name", "score"]
+    assert rows[1] == ["Alice", "95"]
+    assert rows[2] == ["Bob", "87"]
+
+
+def test_csv_export_complex_types(core_api, temp_dir):
+    """Test CSV export with complex data types (lists, dicts)."""
+    import csv
+    import json
+
+    data = [
+        {
+            "name": "John",
+            "phones": ["+1234567890", "+0987654321"],
+            "metadata": {"last_seen": "2025-01-17", "active": True},
+            "score": 42,
+            "flag": None,
+        }
+    ]
+
+    output_path = temp_dir / "complex_types.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=data,
+        extraction_type="test",
+        include_metadata=False,
+    )
+
+    # Read and verify content
+    with open(output_path, 'r', encoding='utf-8', newline='') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    # Verify header
+    assert "name" in rows[0]
+    assert "phones" in rows[0]
+    assert "metadata" in rows[0]
+
+    # Verify data row
+    data_row = rows[1]
+    name_idx = rows[0].index("name")
+    phones_idx = rows[0].index("phones")
+    metadata_idx = rows[0].index("metadata")
+    flag_idx = rows[0].index("flag")
+
+    assert data_row[name_idx] == "John"
+
+    # Lists and dicts should be JSON strings
+    phones_parsed = json.loads(data_row[phones_idx])
+    assert phones_parsed == ["+1234567890", "+0987654321"]
+
+    metadata_parsed = json.loads(data_row[metadata_idx])
+    assert metadata_parsed == {"last_seen": "2025-01-17", "active": True}
+
+    # None should become empty string
+    assert data_row[flag_idx] == ""
+
+
+def test_csv_export_empty_data(core_api, temp_dir):
+    """Test CSV export with empty data list."""
+    output_path = temp_dir / "empty_data.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=[],
+        extraction_type="test",
+        include_metadata=True,
+    )
+
+    # File should exist but with only metadata
+    assert output_path.exists()
+
+    with open(output_path, 'r', encoding='utf-8', newline='') as f:
+        content = f.read()
+
+    # Should have metadata but no data
+    assert "Plugin Name" in content
+    assert "TestPlugin" in content
+
+
+def test_csv_export_mixed_keys(core_api, temp_dir):
+    """Test CSV export with dictionaries having different keys."""
+    import csv
+
+    data = [
+        {"name": "Alice", "age": 30, "city": "NYC"},
+        {"name": "Bob", "country": "USA"},  # Different keys
+        {"name": "Charlie", "age": 25, "email": "charlie@example.com"},  # More keys
+    ]
+
+    output_path = temp_dir / "mixed_keys.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=data,
+        extraction_type="test",
+        include_metadata=False,
+    )
+
+    # Read and verify content
+    with open(output_path, 'r', encoding='utf-8', newline='') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    # Header should contain all unique keys
+    header = rows[0]
+    assert "name" in header
+    assert "age" in header
+    assert "city" in header
+    assert "country" in header
+    assert "email" in header
+
+    # Verify data rows (missing keys should be empty)
+    assert len(rows) == 4  # Header + 3 data rows
+
+
+def test_csv_export_utf8_encoding(core_api, temp_dir):
+    """Test CSV export handles UTF-8 characters correctly."""
+    import csv
+
+    data = [
+        {"name": "François", "city": "Montréal", "note": "Café ☕"},
+        {"name": "李明", "city": "北京", "note": "中文"},
+        {"name": "José", "city": "São Paulo", "note": "Olá!"},
+    ]
+
+    output_path = temp_dir / "utf8_test.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=data,
+        extraction_type="test",
+        include_metadata=False,
+    )
+
+    # Read and verify UTF-8 content
+    with open(output_path, 'r', encoding='utf-8', newline='') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    # Verify special characters preserved
+    assert "François" in rows[1]
+    assert "Montréal" in rows[1]
+    assert "Café ☕" in rows[1]
+    assert "李明" in rows[2]
+    assert "北京" in rows[2]
+
+
+def test_csv_export_creates_directories(core_api, temp_dir):
+    """Test that CSV export creates parent directories."""
+    data = [{"key": "value"}]
+
+    output_path = temp_dir / "subdir" / "nested" / "export.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=data,
+        extraction_type="test",
+    )
+
+    # Verify file and directories created
+    assert output_path.exists()
+    assert output_path.parent.exists()
+
+
+def test_csv_export_large_dataset(core_api, temp_dir):
+    """Test CSV export with larger dataset."""
+    import csv
+
+    # Generate large dataset
+    data = [
+        {
+            "id": i,
+            "name": f"User_{i}",
+            "email": f"user{i}@example.com",
+            "score": i * 10,
+        }
+        for i in range(1000)
+    ]
+
+    output_path = temp_dir / "large_dataset.csv"
+
+    core_api.export_plugin_data_to_csv(
+        output_path,
+        plugin_name="TestPlugin",
+        plugin_version="1.0.0",
+        data=data,
+        extraction_type="test",
+        include_metadata=False,
+    )
+
+    # Verify file exists and has correct number of rows
+    with open(output_path, 'r', encoding='utf-8', newline='') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+
+    # Header + 1000 data rows
+    assert len(rows) == 1001

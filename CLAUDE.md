@@ -1252,6 +1252,300 @@ def execute(self, *args, **kwargs):
     data = self.core_api.read_plist_from_zip(plist_path)
 ```
 
+### Base64 Encoding/Decoding
+
+The Core API provides comprehensive base64 encoding and decoding functionality for handling binary data in text-safe formats. This is useful for embedding binary data (images, BLOBs, files) in JSON exports, reports, or transmitting over text-based protocols.
+
+**Common Forensic Use Cases:**
+- **Embedding Images in JSON**: Include photos, avatars, or thumbnails in JSON exports
+- **Binary Data Storage**: Store binary artifacts in text-based formats
+- **Data Transmission**: Safely transmit binary evidence over text protocols
+- **Report Attachments**: Embed small binary files directly in reports
+
+**Basic Encoding/Decoding:**
+
+```python
+# Encode bytes to base64 string
+data = b"Hello, World!"
+encoded = self.core_api.base64_encode(data)
+# Returns: "SGVsbG8sIFdvcmxkIQ=="
+
+# Decode base64 string to bytes
+decoded = self.core_api.base64_decode("SGVsbG8sIFdvcmxkIQ==")
+# Returns: b"Hello, World!"
+```
+
+**File Encoding:**
+
+```python
+# Encode file from ZIP archive
+encoded_image = self.core_api.base64_encode_file("path/to/avatar.png")
+
+# Encode local file
+encoded_doc = self.core_api.base64_encode_file(Path("evidence/document.pdf"))
+
+# Encode BLOB from database and store as base64
+blob = self.core_api.extract_blob_from_zip(
+    "contacts.db",
+    "SELECT photo FROM contacts WHERE id = ?"
+    params=(123,)
+)
+if blob:
+    encoded_photo = self.core_api.base64_encode(blob)
+    # Store in JSON or text report
+```
+
+**File Decoding:**
+
+```python
+# Decode base64 string and save to file
+encoded_data = "SGVsbG8sIFdvcmxkIQ=="
+output_path = self.core_api.base64_decode_to_file(
+    encoded_data,
+    self.core_api.get_case_output_dir("decoded") / "file.dat"
+)
+# Saves decoded file and returns path
+```
+
+**Complete Workflow Example:**
+
+```python
+def execute(self, *args, **kwargs):
+    # Extract contact photos from database
+    photos = self.core_api.extract_blobs_from_sqlcipher_zip(
+        "data/data/com.whatsapp/databases/wa.db",
+        encryption_key,
+        "SELECT jid, photo FROM wa_contacts WHERE photo IS NOT NULL"
+    )
+
+    # Prepare data for JSON export with base64-encoded images
+    contacts_data = []
+    for jid, photo in photos:
+        contacts_data.append({
+            "jid": jid,
+            "photo_base64": self.core_api.base64_encode(photo),
+            "photo_type": self.core_api.detect_blob_type(photo)
+        })
+
+    # Export to JSON with embedded base64 images
+    output_dir = self.core_api.get_case_output_dir("whatsapp_contacts")
+    self.core_api.export_plugin_data_to_json(
+        output_dir / "contacts_with_photos.json",
+        self.metadata.name,
+        self.metadata.version,
+        {"contacts": contacts_data},
+        self.extraction_type
+    )
+
+    # Later: decode and save images from JSON
+    for contact in contacts_data:
+        photo_path = output_dir / f"{contact['jid']}.{contact['photo_type']}"
+        self.core_api.base64_decode_to_file(
+            contact["photo_base64"],
+            photo_path
+        )
+```
+
+**Method Signatures:**
+
+```python
+# Basic encoding/decoding
+def base64_encode(data: bytes) -> str
+def base64_decode(encoded_string: str) -> bytes
+
+# File operations
+def base64_encode_file(file_path: str | Path) -> str
+def base64_decode_to_file(encoded_string: str, output_path: Path) -> Path
+```
+
+**Error Handling:**
+
+```python
+try:
+    decoded = self.core_api.base64_decode(encoded_string)
+except ValueError as e:
+    self.core_api.print_error(f"Invalid base64 data: {e}")
+```
+
+**Benefits:**
+- Text-safe representation of binary data
+- JSON-compatible format for binary artifacts
+- Automatic file I/O handling
+- Works with both ZIP files and local files
+- Consistent error handling
+
+### CSV Data Export
+
+The Core API provides CSV export functionality similar to JSON export, allowing plugins to export structured data in CSV format for analysis in spreadsheet applications like Excel, LibreOffice Calc, or forensic analysis tools.
+
+**Common Forensic Use Cases:**
+- **Call Logs**: Export call history for timeline analysis
+- **Contact Lists**: Export contact information in tabular format
+- **Message Logs**: Export chat messages for review
+- **App Permissions**: Export app permission matrices
+- **Timeline Analysis**: Export timestamped events for correlation
+
+**Basic CSV Export:**
+
+```python
+# Export list of dictionaries to CSV
+data = [
+    {"name": "John Doe", "phone": "+1234567890", "email": "john@example.com"},
+    {"name": "Jane Smith", "phone": "+0987654321", "email": "jane@example.com"},
+]
+
+output_path = self.core_api.get_case_output_dir("contacts") / "contacts.csv"
+self.core_api.export_plugin_data_to_csv(
+    output_path,
+    plugin_name=self.metadata.name,
+    plugin_version=self.metadata.version,
+    data=data,
+    extraction_type=self.extraction_type,
+    include_metadata=True  # Include metadata header rows
+)
+```
+
+**CSV Format:**
+
+With `include_metadata=True` (default), the CSV includes metadata rows at the top:
+
+```csv
+Plugin Name,MyPlugin
+Plugin Version,1.0.0
+Extraction Source,cellebrite_ios
+Processing Timestamp,2025-01-17T14:30:00Z
+
+name,phone,email
+John Doe,+1234567890,john@example.com
+Jane Smith,+0987654321,jane@example.com
+```
+
+**Without Metadata:**
+
+```python
+# Export data-only CSV (no metadata header)
+self.core_api.export_plugin_data_to_csv(
+    output_path,
+    plugin_name=self.metadata.name,
+    plugin_version=self.metadata.version,
+    data=data,
+    extraction_type=self.extraction_type,
+    include_metadata=False  # Data only
+)
+```
+
+**Handling Complex Data Types:**
+
+The CSV export automatically handles complex data types:
+
+```python
+data = [
+    {
+        "name": "John",
+        "phones": ["+1234567890", "+0987654321"],  # List → JSON string
+        "metadata": {"last_seen": "2025-01-17"},    # Dict → JSON string
+        "active": True,                              # Boolean → "True"
+        "score": 42,                                 # Integer → "42"
+        "missing": None,                             # None → ""
+    }
+]
+
+# Lists and dicts are automatically converted to JSON strings
+# CSV output:
+# name,phones,metadata,active,score,missing
+# John,"['+1234567890', '+0987654321']","{""last_seen"": ""2025-01-17""}",True,42,
+```
+
+**Complete Workflow Example:**
+
+```python
+def execute(self, *args, **kwargs):
+    # Extract call logs from database
+    rows = self.core_api.query_sqlite_from_zip_dict(
+        "Library/CallHistory/CallHistory.storedata",
+        "SELECT ZADDRESS as number, ZDATE as timestamp, ZDURATION as duration, "
+        "ZCALLTYPE as call_type FROM ZCALLRECORD ORDER BY ZDATE DESC"
+    )
+
+    # Process and format data
+    call_logs = []
+    for row in rows:
+        # Convert Core Data timestamp (seconds since 2001-01-01)
+        timestamp = datetime(2001, 1, 1) + timedelta(seconds=row["timestamp"])
+
+        call_logs.append({
+            "Number": row["number"],
+            "Date": timestamp.strftime("%Y-%m-%d %H:%M:%S"),
+            "Duration (seconds)": int(row["duration"]),
+            "Type": {1: "Outgoing", 2: "Incoming", 3: "Missed"}.get(row["call_type"], "Unknown"),
+        })
+
+    # Export to CSV
+    output_dir = self.core_api.get_case_output_dir("call_logs")
+    csv_path = output_dir / "call_history.csv"
+
+    self.core_api.export_plugin_data_to_csv(
+        csv_path,
+        plugin_name=self.metadata.name,
+        plugin_version=self.metadata.version,
+        data=call_logs,
+        extraction_type=self.extraction_type,
+    )
+
+    self.core_api.print_success(f"Exported {len(call_logs)} call records to CSV")
+
+    return {
+        "success": True,
+        "csv_path": str(csv_path),
+        "record_count": len(call_logs),
+    }
+```
+
+**Comparison with JSON Export:**
+
+| Feature | JSON Export | CSV Export |
+|---------|-------------|------------|
+| **Format** | Hierarchical, nested | Flat, tabular |
+| **Best For** | Complex nested data | Simple tabular data |
+| **Readability** | Moderate | High (spreadsheets) |
+| **Tool Support** | APIs, scripts | Excel, Calc, analysis tools |
+| **Data Types** | Native types | Strings (complex → JSON) |
+
+**Method Signature:**
+
+```python
+def export_plugin_data_to_csv(
+    output_path: Path,
+    plugin_name: str,
+    plugin_version: str,
+    data: list[dict[str, Any]],
+    extraction_type: str = "unknown",
+    include_metadata: bool = True,
+) -> None
+```
+
+**Error Handling:**
+
+```python
+# Empty data handling
+if not data:
+    self.core_api.print_warning("No data to export")
+    return
+
+try:
+    self.core_api.export_plugin_data_to_csv(output_path, ...)
+except Exception as e:
+    self.core_api.print_error(f"CSV export failed: {e}")
+```
+
+**Benefits:**
+- Compatible with Excel, LibreOffice Calc, and forensic tools
+- Automatic handling of complex data types (lists, dicts → JSON)
+- Optional metadata header for audit trail
+- Comprehensive column detection (union of all keys)
+- UTF-8 encoding for international character support
+- Consistent format with JSON export
+
 ## Unified Report Generation
 
 All plugins should use the CoreAPI's `generate_report()` method for consistent markdown report generation:
