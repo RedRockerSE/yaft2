@@ -394,6 +394,24 @@ The Core API provides comprehensive functionality for forensic plugins:
 - Forensic workflow patterns
 - Testing and debugging plugins
 
+**Interactive API Documentation:**
+
+YAFT provides a built-in command to explore all available Core API methods:
+
+```bash
+# View all API categories and method counts
+python -m yaft.cli api-docs
+
+# View detailed methods for a specific category
+python -m yaft.cli api-docs "ZIP File Handling"
+
+# Search for methods by name
+python -m yaft.cli api-docs --search plist
+python -m yaft.cli api-docs --search query
+```
+
+This interactive documentation covers 78+ methods across 17 categories including ZIP file handling, SQLite/SQLCipher queries, BLOB extraction, report generation, and more.
+
 ### Production Forensic Plugins
 
 YaFT includes production-ready forensic analysis plugins for both iOS and Android devices:

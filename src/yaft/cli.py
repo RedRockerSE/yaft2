@@ -650,6 +650,126 @@ def list_available_plugins(
         raise typer.Exit(code=1)
 
 
+@app.command()
+def api_docs(
+    category: Annotated[
+        str | None,
+        typer.Argument(help="Show methods for specific category (optional)"),
+    ] = None,
+    search: Annotated[
+        str | None,
+        typer.Option("--search", "-s", help="Search for methods by name"),
+    ] = None,
+) -> None:
+    """
+    Display Core API methods available for plugin development.
+
+    Lists all public methods in the Core API, organized by functional category.
+    This is useful for plugin developers to discover available functionality.
+
+    Examples:
+        yaft api-docs                           # Show all categories and method counts
+        yaft api-docs "ZIP File Handling"       # Show all ZIP-related methods
+        yaft api-docs --search plist            # Search for plist-related methods
+        yaft api-docs --search query            # Search for query methods
+    """
+    from rich.table import Table
+    from rich.text import Text
+
+    core_api = get_core_api()
+
+    console.print(Panel(
+        "[bold cyan]Core API Documentation[/bold cyan]\n"
+        f"YAFT v{__version__} - Plugin Developer Reference",
+        border_style="cyan",
+    ))
+
+    try:
+        methods = core_api.get_api_methods()
+
+        # Search mode
+        if search:
+            search_lower = search.lower()
+            console.print(f"\n[bold]Searching for methods matching: [cyan]{search}[/cyan][/bold]\n")
+
+            found = False
+            for cat, method_list in methods.items():
+                matching = [m for m in method_list if search_lower in m["name"].lower()]
+                if matching:
+                    found = True
+                    console.print(f"[bold yellow]{cat}:[/bold yellow]")
+                    for method in matching:
+                        console.print(f"  [cyan]{method['signature']}[/cyan]")
+                        if method["returns"]:
+                            console.print(f"    [dim]Returns: {method['returns']}[/dim]")
+                        console.print(f"    {method['description']}\n")
+
+            if not found:
+                console.print(f"[yellow]No methods found matching '{search}'[/yellow]")
+            return
+
+        # Specific category mode
+        if category:
+            if category not in methods:
+                console.print(f"[red]Category '{category}' not found.[/red]\n")
+                console.print("[bold]Available categories:[/bold]")
+                for cat in methods.keys():
+                    console.print(f"  - {cat}")
+                raise typer.Exit(code=1)
+
+            method_list = methods[category]
+            console.print(f"\n[bold yellow]{category}[/bold yellow] ([cyan]{len(method_list)}[/cyan] methods)\n")
+
+            table = Table(show_header=True, header_style="bold cyan", box=None)
+            table.add_column("Method", style="cyan", no_wrap=False)
+            table.add_column("Returns", style="green", no_wrap=True)
+            table.add_column("Description", style="white", no_wrap=False)
+
+            for method in method_list:
+                table.add_row(
+                    method["signature"],
+                    method["returns"] or "-",
+                    method["description"],
+                )
+
+            console.print(table)
+            return
+
+        # Overview mode - show all categories
+        console.print("\n[bold]API Method Categories:[/bold]\n")
+
+        # Count total methods
+        total_methods = sum(len(method_list) for method_list in methods.values())
+
+        table = Table(show_header=True, header_style="bold cyan")
+        table.add_column("Category", style="yellow", no_wrap=False)
+        table.add_column("Methods", justify="right", style="cyan")
+        table.add_column("Examples", style="dim", no_wrap=False)
+
+        for cat, method_list in methods.items():
+            # Show first 3 method names as examples
+            examples = ", ".join([m["name"] for m in method_list[:3]])
+            if len(method_list) > 3:
+                examples += ", ..."
+
+            table.add_row(
+                cat,
+                str(len(method_list)),
+                examples,
+            )
+
+        console.print(table)
+
+        console.print(f"\n[bold]Total API Methods:[/bold] [cyan]{total_methods}[/cyan]")
+        console.print("\n[dim]Usage:[/dim]")
+        console.print("  [dim]yaft api-docs \"<category>\"     - View methods in specific category[/dim]")
+        console.print("  [dim]yaft api-docs --search <term>  - Search for methods by name[/dim]")
+
+    except Exception as e:
+        console.print(f"\n[red]✗ Failed to retrieve API documentation:[/red] {str(e)}")
+        raise typer.Exit(code=1)
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
