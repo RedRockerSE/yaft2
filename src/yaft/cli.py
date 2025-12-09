@@ -205,16 +205,7 @@ def run(
     if mode_count > 1:
         core_api.print_error("Cannot combine plugin_name, --plugins, --profile, --all, and --os options")
         raise typer.Exit(code=1)
-
-    # Prompt for case identifiers
-    try:
-        core_api.prompt_for_case_identifiers()
-    except KeyboardInterrupt:
-        core_api.print_error("\nCase identifier input cancelled")
-        raise typer.Exit(code=1) from None
-    except Exception as e:
-        core_api.print_error(f"Failed to get case identifiers: {e}")
-        raise typer.Exit(code=1) from e
+   
 
     # Enable PDF export if requested
     if pdf_export:
@@ -298,6 +289,16 @@ def run(
     if not plugins_to_run:
         core_api.print_error("No plugins to run")
         raise typer.Exit(code=1)
+
+    # Prompt for case identifiers
+    try:
+        core_api.prompt_for_case_identifiers()
+    except KeyboardInterrupt:
+        core_api.print_error("\nCase identifier input cancelled")
+        raise typer.Exit(code=1) from None
+    except Exception as e:
+        core_api.print_error(f"Failed to get case identifiers: {e}")
+        raise typer.Exit(code=1) from e
 
     # Execute plugins
     success_count = 0
