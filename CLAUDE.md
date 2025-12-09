@@ -1946,6 +1946,12 @@ python -m yaft.cli run --zip android.zip --profile profiles/android_full_analysi
 # Run with PDF export enabled (generates both markdown and PDF reports)
 python -m yaft.cli run --zip evidence.zip --profile profiles/ios_full_analysis.toml --pdf
 
+# View Core API documentation (for plugin developers)
+python -m yaft.cli api-docs                          # Show all categories
+python -m yaft.cli api-docs "ZIP File Handling"      # Show methods in specific category
+python -m yaft.cli api-docs --search plist           # Search for methods
+python -m yaft.cli api-docs --search query           # Search for query methods
+
 # Run tests
 pytest
 
@@ -2067,6 +2073,71 @@ profile.plugins       # list[str]: List of plugin class names
 ```
 
 ## Plugin Development
+
+### Core API Documentation
+
+YAFT provides a built-in CLI command to explore all available Core API methods for plugin development. This interactive documentation helps developers discover the full range of functionality available to plugins.
+
+**View all available API categories:**
+```bash
+python -m yaft.cli api-docs
+```
+
+This displays all method categories with counts and examples:
+- **Logging** - Structured logging methods (log_info, log_error, etc.)
+- **Output & Display** - Rich terminal output (print_success, print_error, etc.)
+- **Case Management** - Forensic case identifier management
+- **ZIP File Handling** - ZIP archive operations and file extraction
+- **File Search** - Glob-style pattern matching in ZIP archives
+- **Data Format Parsing** - Plist, XML, and binary format parsers
+- **SQLite & Database** - SQLite and SQLCipher query execution
+- **BLOB Handling** - Binary data extraction and type detection
+- **Security & Credentials** - iOS Keychain and Android keystore parsing
+- **Forensic Analysis** - OS detection and extraction format identification
+- **Report Generation** - Markdown report creation with metadata
+- **Export Functions** - JSON, CSV, PDF, and HTML export capabilities
+- **Encoding & Decoding** - Base64 encoding/decoding for binary data
+- **Configuration** - Configuration and profile management
+- **Plugin System** - Plugin update and management system
+- **User Input** - Interactive prompts and confirmations
+- **Shared Data** - Inter-plugin communication and data sharing
+
+**View methods in a specific category:**
+```bash
+python -m yaft.cli api-docs "ZIP File Handling"
+```
+
+Displays a detailed table showing:
+- Method signatures with parameter types
+- Return types
+- Brief descriptions
+
+**Search for methods by name:**
+```bash
+python -m yaft.cli api-docs --search plist
+python -m yaft.cli api-docs --search query
+python -m yaft.cli api-docs --search blob
+```
+
+This is especially useful when you know what you want to do but need to find the right method.
+
+**Programmatic Access:**
+
+Plugins can also access this information programmatically:
+```python
+# Get all available API methods
+methods = self.core_api.get_api_methods()
+
+# Iterate through categories
+for category, method_list in methods.items():
+    print(f"{category}: {len(method_list)} methods")
+
+# Get methods in specific category
+zip_methods = methods["ZIP File Handling"]
+for method in zip_methods:
+    print(f"{method['signature']} -> {method['returns']}")
+    print(f"  {method['description']}")
+```
 
 ### Creating a New Plugin
 

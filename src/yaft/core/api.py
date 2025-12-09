@@ -3807,3 +3807,126 @@ class CoreAPI:
             plugins_dir=plugins_dir,
             cache_dir=Path(".plugin_cache"),
         )
+
+    # ========================================================================
+    # API Documentation
+    # ========================================================================
+
+    def get_api_methods(self) -> dict[str, list[dict[str, str]]]:
+        """
+        Get categorized list of all public Core API methods with their signatures.
+
+        This method provides structured documentation of all available Core API methods,
+        organized by functional category. It's useful for plugin developers to discover
+        available functionality.
+
+        Returns:
+            Dictionary mapping category names to lists of method information.
+            Each method info dict contains: name, signature, returns, description
+
+        Example:
+            >>> methods = api.get_api_methods()
+            >>> for category, method_list in methods.items():
+            ...     print(f"{category}: {len(method_list)} methods")
+            >>> # Get all logging methods
+            >>> logging_methods = methods["Logging"]
+        """
+        import inspect
+
+        methods_by_category: dict[str, list[dict[str, str]]] = {
+            "Logging": [],
+            "Output & Display": [],
+            "Case Management": [],
+            "ZIP File Handling": [],
+            "File Search": [],
+            "Data Format Parsing": [],
+            "SQLite & Database": [],
+            "BLOB Handling": [],
+            "Security & Credentials": [],
+            "Forensic Analysis": [],
+            "Report Generation": [],
+            "Export Functions": [],
+            "Encoding & Decoding": [],
+            "Configuration": [],
+            "Plugin System": [],
+            "User Input": [],
+            "Shared Data": [],
+        }
+
+        # Get all public methods
+        for name, method in inspect.getmembers(self.__class__, predicate=inspect.isfunction):
+            # Skip private methods and dunder methods
+            if name.startswith("_"):
+                continue
+
+            # Get signature and docstring
+            try:
+                sig = inspect.signature(method)
+                doc = inspect.getdoc(method) or "No description available"
+                # Get first line of docstring
+                first_line = doc.split("\n")[0].strip()
+
+                # Build readable signature (remove self parameter)
+                params = [
+                    f"{p.name}: {p.annotation.__name__ if hasattr(p.annotation, '__name__') else str(p.annotation).replace('typing.', '')}"
+                    if p.annotation != inspect.Parameter.empty
+                    else p.name
+                    for p in sig.parameters.values()
+                    if p.name != "self"
+                ]
+                signature = f"{name}({', '.join(params)})"
+
+                # Get return annotation
+                returns = ""
+                if sig.return_annotation != inspect.Parameter.empty:
+                    returns = sig.return_annotation.__name__ if hasattr(sig.return_annotation, '__name__') else str(sig.return_annotation).replace('typing.', '')
+
+                method_info = {
+                    "name": name,
+                    "signature": signature,
+                    "returns": returns,
+                    "description": first_line,
+                }
+
+                # Categorize by method name patterns
+                if name.startswith("log_"):
+                    methods_by_category["Logging"].append(method_info)
+                elif name.startswith("print_"):
+                    methods_by_category["Output & Display"].append(method_info)
+                elif "case" in name or "examiner" in name or "evidence" in name:
+                    methods_by_category["Case Management"].append(method_info)
+                elif name in ["set_zip_file", "get_current_zip", "close_zip", "list_zip_contents", "read_zip_file", "read_zip_file_text", "extract_zip_file", "extract_all_zip", "display_zip_contents", "get_zip_info", "detect_zip_format", "normalize_zip_path"]:
+                    methods_by_category["ZIP File Handling"].append(method_info)
+                elif "find_files" in name:
+                    methods_by_category["File Search"].append(method_info)
+                elif "plist" in name or "xml" in name or name in ["parse_plist", "parse_xml"]:
+                    methods_by_category["Data Format Parsing"].append(method_info)
+                elif "sqlite" in name or "query" in name or "sqlcipher" in name or "decrypt" in name:
+                    methods_by_category["SQLite & Database"].append(method_info)
+                elif "blob" in name:
+                    methods_by_category["BLOB Handling"].append(method_info)
+                elif "keychain" in name or "locksettings" in name or "keystore" in name:
+                    methods_by_category["Security & Credentials"].append(method_info)
+                elif "extraction" in name or "detect" in name or name in ["get_detected_os", "get_ios_version", "get_android_version", "get_extraction_info"]:
+                    methods_by_category["Forensic Analysis"].append(method_info)
+                elif "report" in name and name != "export_all_reports_to_pdf" and name != "export_all_reports_to_html":
+                    methods_by_category["Report Generation"].append(method_info)
+                elif "export" in name or "pdf" in name or "html" in name or "markdown" in name or "json" in name or "csv" in name:
+                    methods_by_category["Export Functions"].append(method_info)
+                elif "base64" in name:
+                    methods_by_category["Encoding & Decoding"].append(method_info)
+                elif "config" in name or "profile" in name:
+                    methods_by_category["Configuration"].append(method_info)
+                elif "plugin" in name or "updater" in name:
+                    methods_by_category["Plugin System"].append(method_info)
+                elif "input" in name or "confirm" in name or "prompt" in name:
+                    methods_by_category["User Input"].append(method_info)
+                elif "shared_data" in name:
+                    methods_by_category["Shared Data"].append(method_info)
+
+            except Exception:
+                # Skip methods that cause issues during introspection
+                continue
+
+        # Remove empty categories
+        return {k: v for k, v in methods_by_category.items() if v}
