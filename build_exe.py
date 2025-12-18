@@ -146,6 +146,127 @@ def build_executable(spec_file: Path, dist_dir: Path, build_dir: Path) -> bool:
         return False
 
 
+def generate_type_stubs(dist_dir: Path) -> None:
+    """
+    Generate type stub files (.pyi) for plugin development IntelliSense.
+
+    This creates stub files for yaft.core modules to enable VS Code autocomplete
+    and type checking for plugin developers working against the executable.
+    """
+    print("\nGenerating type stub files for plugin development...")
+
+    stubs_dir = dist_dir / "yaft" / "yaft-stubs"
+    stubs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Try to find stubgen executable
+    # First, check if it's in the same directory as Python
+    python_dir = Path(sys.executable).parent
+    stubgen_exe = python_dir / "stubgen.exe" if platform.system() == "Windows" else python_dir / "stubgen"
+
+    # Fallback: try finding it in PATH or use python -m mypy.stubgen
+    if not stubgen_exe.exists():
+        stubgen_cmd = "stubgen"  # Hope it's in PATH
+    else:
+        stubgen_cmd = str(stubgen_exe)
+
+    # Generate stubs for yaft.core package
+    cmd = [
+        stubgen_cmd,
+        "-p", "yaft.core",
+        "-o", str(stubs_dir),
+        "--include-private",
+        "--include-docstrings",
+    ]
+
+    try:
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout)
+        print(f"[OK] Type stubs generated at: {stubs_dir}")
+
+        # Verify stub files were created
+        expected_stubs = [
+            stubs_dir / "yaft" / "core" / "api.pyi",
+            stubs_dir / "yaft" / "core" / "plugin_base.pyi",
+        ]
+        missing = [s for s in expected_stubs if not s.exists()]
+        if missing:
+            print(f"Warning: Some expected stub files not found: {missing}")
+        else:
+            print("  - api.pyi (CoreAPI type hints)")
+            print("  - plugin_base.pyi (PluginBase type hints)")
+
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: Stub generation failed: {e}")
+        if e.stdout:
+            print(e.stdout)
+        if e.stderr:
+            print(e.stderr)
+        print("Plugin development IntelliSense will not be available.")
+    except FileNotFoundError:
+        print("Warning: stubgen not found. Install mypy: uv pip install mypy")
+        print("Plugin development IntelliSense will not be available.")
+
+
+def create_pylance_config(dist_dir: Path) -> None:
+    """
+    Create Pylance/Pyright configuration for plugin development.
+
+    This creates a pyrightconfig.json file that tells VS Code where to find
+    type stubs and how to configure type checking for plugin development.
+    """
+    config_content = """{
+  "$schema": "https://raw.githubusercontent.com/microsoft/pyright/main/packages/pyright/schemas/pyrightconfig.schema.json",
+  "include": [
+    "plugins"
+  ],
+  "stubPath": "yaft-stubs",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Windows"
+}
+"""
+    config_file = dist_dir / "yaft" / "pyrightconfig.json"
+    config_file.write_text(config_content, encoding="utf-8")
+    print(f"[OK] Created Pylance config at: {config_file}")
+
+
+def create_vscode_settings(dist_dir: Path) -> None:
+    """
+    Create VS Code workspace settings for plugin development.
+
+    This creates a .vscode/settings.json file with Python language server
+    settings optimized for plugin development against the executable.
+    """
+    vscode_dir = dist_dir / "yaft" / ".vscode"
+    vscode_dir.mkdir(parents=True, exist_ok=True)
+
+    settings_content = """{
+  "python.analysis.typeCheckingMode": "basic",
+  "python.analysis.stubPath": "yaft-stubs",
+  "python.analysis.autoSearchPaths": true,
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/yaft-stubs"
+  ],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "yaft.exe": true,
+    "yaft": true
+  },
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "information"
+  }
+}
+"""
+    settings_file = vscode_dir / "settings.json"
+    settings_file.write_text(settings_content, encoding="utf-8")
+    print(f"[OK] Created VS Code settings at: {settings_file}")
+
+
 def create_plugin_readme(dist_dir: Path) -> None:
     """Create a README in the plugins directory explaining how to add plugins."""
     plugins_dir = dist_dir / "yaft" / "plugins"
@@ -154,6 +275,21 @@ def create_plugin_readme(dist_dir: Path) -> None:
     readme_content = """# YAFT Plugins Directory
 
 This directory is where you can add custom plugins for YAFT.
+
+## VS Code IntelliSense Setup
+
+This distribution includes type stubs for full IntelliSense support in VS Code:
+
+1. **Open the yaft folder as workspace** (not individual files)
+2. **Select Python interpreter** (any Python 3.12+ environment)
+3. **Start coding** - autocomplete will work automatically!
+
+The following files enable IntelliSense:
+- `yaft-stubs/` - Type hints for CoreAPI and PluginBase
+- `pyrightconfig.json` - VS Code Pylance configuration
+- `.vscode/settings.json` - Workspace settings
+
+For troubleshooting, see: `docs/PLUGIN_DEVELOPMENT_SE.md`
 
 ## Adding Plugins
 
@@ -213,7 +349,7 @@ https://github.com/yourusername/yaft
 """
     readme_file = plugins_dir / "README.md"
     readme_file.write_text(readme_content, encoding="utf-8")
-    print(f"Created plugin README at: {readme_file}")
+    print(f"[OK] Created plugin README at: {readme_file}")
 
 
 def main() -> int:
@@ -259,18 +395,34 @@ def main() -> int:
         print(f"Executable location: {dist_dir / 'yaft'}")
         print(f"Platform: {get_platform_name()}")
 
-        # Create plugin readme
+        # Generate plugin development support files
+        print("\nSetting up plugin development environment...")
+        generate_type_stubs(dist_dir)
+        create_pylance_config(dist_dir)
+        create_vscode_settings(dist_dir)
         create_plugin_readme(dist_dir)
 
         # Show instructions
-        print("\nTo run the executable:")
+        print("\n" + "=" * 70)
+        print("BUILD COMPLETE")
+        print("=" * 70)
+
+        print("\n[RUN] To run the executable:")
         if platform.system() == "Windows":
             print(f"  {dist_dir / 'yaft' / 'yaft.exe'}")
         else:
             print(f"  {dist_dir / 'yaft' / 'yaft'}")
 
-        print("\nTo add custom plugins:")
-        print(f"  Place .py files in: {dist_dir / 'yaft' / 'plugins'}")
+        print("\n[DEV] To develop plugins with VS Code IntelliSense:")
+        print(f"  1. Open folder in VS Code: {dist_dir / 'yaft'}")
+        print("  2. Select Python interpreter (any Python 3.12+)")
+        print("  3. Create plugins in: plugins/")
+        print("  4. Enjoy full autocomplete and type hints!")
+
+        print("\n[DOCS] Documentation:")
+        print("  - Plugin README: plugins/README.md")
+        print("  - VS Code Setup: docs/PLUGIN_DEVELOPMENT_SE.md")
+        print("  - YAFT Guide: CLAUDE.md")
 
         return 0
     else:
