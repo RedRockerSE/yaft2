@@ -489,7 +489,7 @@ def update_plugins(
 
     console.print(Panel(
         "[bold cyan]Plugin Update System[/bold cyan]\n"
-        "Checking for plugin updates from GitHub...",
+        "Checking for plugin updates...",
         border_style="cyan",
     ))
 
