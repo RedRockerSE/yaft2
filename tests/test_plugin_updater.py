@@ -23,6 +23,7 @@ from yaft.core.plugin_updater import (
     PluginManifest,
     PluginManifestEntry,
     PluginUpdater,
+    PluginUpdaterConfig,
     UpdateCheckResult,
 )
 
@@ -99,12 +100,18 @@ def updater(tmp_path):
     plugins_dir.mkdir()
     cache_dir.mkdir()
 
+    # Create config for testing
+    config = PluginUpdaterConfig(
+        source_type="online",
+        timeout=10,
+    )
+    config.online.repository = "test/repo"
+    config.online.branch = "main"
+
     return PluginUpdater(
-        repo="test/repo",
-        branch="main",
+        config=config,
         plugins_dir=plugins_dir,
         cache_dir=cache_dir,
-        timeout=10,
     )
 
 
@@ -115,15 +122,18 @@ def test_updater_initialization(tmp_path):
     plugins_dir = tmp_path / "plugins"
     cache_dir = tmp_path / ".cache"
 
+    config = PluginUpdaterConfig(source_type="online")
+    config.online.repository = "owner/repo"
+    config.online.branch = "develop"
+
     updater = PluginUpdater(
-        repo="owner/repo",
-        branch="develop",
+        config=config,
         plugins_dir=plugins_dir,
         cache_dir=cache_dir,
     )
 
-    assert updater.repo == "owner/repo"
-    assert updater.branch == "develop"
+    assert updater.config.online.repository == "owner/repo"
+    assert updater.config.online.branch == "develop"
     assert updater.plugins_dir == plugins_dir
     assert updater.cache_dir == cache_dir
     assert plugins_dir.exists()
