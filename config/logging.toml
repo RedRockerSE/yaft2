@@ -1,0 +1,50 @@
+# YAFT Logging Configuration
+# This file controls logging behavior for YAFT (Yet Another Forensic Tool)
+
+[logging]
+# Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# DEBUG: Detailed diagnostic information
+# INFO: General informational messages (default)
+# WARNING: Warning messages for potential issues
+# ERROR: Error messages for serious problems
+# CRITICAL: Critical errors that may cause program failure
+level = "INFO"
+
+# Output mode: console, file, both
+# console: Log to console only (default)
+# file: Log to file only
+# both: Log to both console and file
+output = "file"
+
+# Log file path (used when output is "file" or "both")
+# If relative path, will be relative to yaft_output directory
+# If absolute path, will use the exact path specified
+file_path = "logs/yaft.log"
+
+# Log file rotation settings (optional)
+# max_bytes: Maximum size of log file before rotation (in bytes)
+# backup_count: Number of backup log files to keep
+max_bytes = 10485760  # 10 MB
+backup_count = 5
+
+# Format options
+[logging.format]
+# Include timestamps in log messages
+include_timestamp = true
+
+# Timestamp format (Python strftime format)
+# Default: "[%Y-%m-%d %H:%M:%S]"
+timestamp_format = "[%Y-%m-%d %H:%M:%S]"
+
+# Include log level in messages
+include_level = true
+
+# Include logger name in messages
+include_name = false
+
+# Rich formatting (colored output, etc.)
+# Only applies to console output
+rich_formatting = true
+
+# Show full tracebacks for exceptions
+rich_tracebacks = true
