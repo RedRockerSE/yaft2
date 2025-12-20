@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
 import requests
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -77,41 +77,125 @@ class DownloadResult(BaseModel):
     errors: List[str] = Field(default_factory=list, description="Error messages")
 
 
+class OnlineSourceConfig(BaseModel):
+    """Configuration for online plugin source (GitHub)."""
+
+    repository: str = Field(default="RedRockerSE/yaft2", description="GitHub repository (owner/repo)")
+    branch: str = Field(default="main", description="Git branch to use")
+
+
+class LocalSourceConfig(BaseModel):
+    """Configuration for local plugin source (folder)."""
+
+    path: str = Field(default="", description="Path to local or network folder")
+    auto_generate_manifest: bool = Field(
+        default=False,
+        description="Auto-generate manifest for local plugins if missing"
+    )
+
+    @field_validator("path")
+    @classmethod
+    def validate_path(cls, v: str) -> str:
+        """Validate that path is not empty when used."""
+        # Allow empty path as it's only validated when source_type is "local"
+        return v
+
+
+class PluginUpdaterConfig(BaseModel):
+    """Plugin updater configuration model."""
+
+    source_type: str = Field(
+        default="online",
+        description="Source type (online, local)"
+    )
+    check_interval_hours: int = Field(
+        default=24,
+        description="Hours between update checks"
+    )
+    timeout: int = Field(
+        default=30,
+        description="Request timeout in seconds (for online sources)"
+    )
+    verify_integrity: bool = Field(
+        default=True,
+        description="Verify plugin integrity using SHA256 hashes"
+    )
+    backup_on_update: bool = Field(
+        default=True,
+        description="Backup existing plugins before overwriting"
+    )
+    online: OnlineSourceConfig = Field(
+        default_factory=OnlineSourceConfig,
+        description="Online source configuration"
+    )
+    local: LocalSourceConfig = Field(
+        default_factory=LocalSourceConfig,
+        description="Local source configuration"
+    )
+
+    @field_validator("source_type")
+    @classmethod
+    def validate_source_type(cls, v: str) -> str:
+        """Validate source type."""
+        valid_types = ["online", "local"]
+        v_lower = v.lower()
+        if v_lower not in valid_types:
+            raise ValueError(f"Invalid source_type: {v}. Must be one of {valid_types}")
+        return v_lower
+
+    @field_validator("check_interval_hours")
+    @classmethod
+    def validate_check_interval(cls, v: int) -> int:
+        """Validate check interval."""
+        if v < 0:
+            raise ValueError("check_interval_hours must be >= 0")
+        return v
+
+    @field_validator("timeout")
+    @classmethod
+    def validate_timeout(cls, v: int) -> int:
+        """Validate timeout."""
+        if v < 1:
+            raise ValueError("timeout must be >= 1")
+        return v
+
+
 class PluginUpdater:
     """
-    Handles plugin updates from GitHub repository.
+    Handles plugin updates from online (GitHub) or local sources.
 
-    This class implements the hybrid manifest-based update system:
+    This class implements a flexible update system supporting:
+    - Online sources: GitHub repository with manifest-based updates
+    - Local sources: Local or network folders with plugin files
+
+    Update workflow:
     1. Checks if local manifest is outdated
-    2. Downloads new manifest if changed
-    3. Compares local vs remote plugins
-    4. Downloads missing/updated plugins
+    2. Downloads/loads new manifest if changed
+    3. Compares local vs remote/source plugins
+    4. Downloads/copies missing/updated plugins
     5. Verifies downloads with SHA256 hashes
     """
 
     def __init__(
         self,
-        repo: str = "RedRockerSE/yaft2",
-        branch: str = "main",
+        config: PluginUpdaterConfig | None = None,
         plugins_dir: Path | None = None,
         cache_dir: Path | None = None,
-        timeout: int = 30,
     ) -> None:
         """
         Initialize the plugin updater.
 
         Args:
-            repo: GitHub repository in format "owner/repo"
-            branch: Git branch to use
+            config: Plugin updater configuration (if None, uses defaults)
             plugins_dir: Local plugins directory (default: plugins/)
             cache_dir: Cache directory for manifest (default: .plugin_cache/)
-            timeout: Request timeout in seconds
         """
-        self.repo = repo
-        self.branch = branch
+        # Load configuration (use defaults if not provided)
+        self.config = config or PluginUpdaterConfig()
+
+        # Directory setup
         self.plugins_dir = plugins_dir or Path("plugins")
         self.cache_dir = cache_dir or Path(".plugin_cache")
-        self.timeout = timeout
 
         # Ensure directories exist
         self.plugins_dir.mkdir(parents=True, exist_ok=True)
@@ -121,9 +205,26 @@ class PluginUpdater:
         self.cached_manifest_path = self.cache_dir / "manifest.json"
         self.last_check_path = self.cache_dir / "last_check.txt"
 
-        # GitHub API and raw URLs
+        # GitHub API and raw URLs (for online sources)
         self.api_base = "https://api.github.com"
         self.raw_base = "https://raw.githubusercontent.com"
+
+        # Validate configuration based on source type
+        if self.config.source_type == "local":
+            if not self.config.local.path:
+                raise ValueError(
+                    "Local source path must be configured when source_type is 'local'"
+                )
+            # Validate that local path exists
+            local_path = Path(self.config.local.path)
+            if not local_path.exists():
+                raise ValueError(
+                    f"Local source path does not exist: {self.config.local.path}"
+                )
+            if not local_path.is_dir():
+                raise ValueError(
+                    f"Local source path is not a directory: {self.config.local.path}"
+                )
 
     def check_for_updates(
         self,
@@ -152,14 +253,14 @@ class PluginUpdater:
             )
 
         try:
-            # Download remote manifest
-            remote_manifest = self._fetch_remote_manifest()
+            # Fetch manifest from source (online or local)
+            source_manifest = self._fetch_source_manifest()
 
             # Load local manifest (if exists)
             local_manifest = self._load_local_manifest()
 
             # Check if manifest changed
-            manifest_changed = self._has_manifest_changed(local_manifest, remote_manifest)
+            manifest_changed = self._has_manifest_changed(local_manifest, source_manifest)
 
             if not manifest_changed and not force:
                 logger.info("No manifest changes detected")
@@ -167,17 +268,17 @@ class PluginUpdater:
                 return UpdateCheckResult(
                     updates_available=False,
                     manifest_changed=False,
-                    total_plugins=len(remote_manifest.plugins),
+                    total_plugins=len(source_manifest.plugins),
                     error=None,
                 )
 
-            # Compare local vs remote plugins
+            # Compare local vs source plugins
             new_plugins, updated_plugins = self._compare_plugins(
-                local_manifest, remote_manifest
+                local_manifest, source_manifest
             )
 
-            # Cache the remote manifest
-            self._cache_manifest(remote_manifest)
+            # Cache the source manifest
+            self._cache_manifest(source_manifest)
             self._update_last_check_time()
 
             updates_available = len(new_plugins) > 0 or len(updated_plugins) > 0
@@ -191,7 +292,7 @@ class PluginUpdater:
                 updates_available=updates_available,
                 new_plugins=new_plugins,
                 updated_plugins=updated_plugins,
-                total_plugins=len(remote_manifest.plugins),
+                total_plugins=len(source_manifest.plugins),
                 manifest_changed=manifest_changed,
                 error=None,
             )
@@ -261,8 +362,8 @@ class PluginUpdater:
                     shutil.copy2(local_path, backup_path)
                     logger.debug(f"Backed up to {backup_path}")
 
-                # Download plugin
-                content = self._download_plugin_file(plugin.filename)
+                # Fetch plugin (download or copy from local)
+                content = self._fetch_plugin_file(plugin.filename)
 
                 # Verify SHA256 if requested
                 if verify:
@@ -381,25 +482,66 @@ class PluginUpdater:
 
     # Private helper methods
 
+    def _fetch_source_manifest(self) -> PluginManifest:
+        """
+        Fetch manifest from configured source (online or local).
+
+        Returns:
+            PluginManifest: Fetched manifest
+
+        Raises:
+            Exception: If manifest cannot be fetched
+        """
+        if self.config.source_type == "online":
+            return self._fetch_remote_manifest()
+        elif self.config.source_type == "local":
+            return self._fetch_local_manifest()
+        else:
+            raise ValueError(f"Unknown source_type: {self.config.source_type}")
+
+    def _fetch_plugin_file(self, filename: str) -> bytes:
+        """
+        Fetch plugin file from configured source (online or local).
+
+        Args:
+            filename: Plugin filename to fetch
+
+        Returns:
+            bytes: Plugin file content
+
+        Raises:
+            Exception: If file cannot be fetched
+        """
+        if self.config.source_type == "online":
+            return self._download_plugin_file(filename)
+        elif self.config.source_type == "local":
+            return self._copy_local_plugin_file(filename)
+        else:
+            raise ValueError(f"Unknown source_type: {self.config.source_type}")
+
     def _fetch_remote_manifest(self) -> PluginManifest:
         """Fetch manifest from GitHub."""
-        url = f"{self.raw_base}/{self.repo}/{self.branch}/plugins_manifest.json"
+        repo = self.config.online.repository
+        branch = self.config.online.branch
+        url = f"{self.raw_base}/{repo}/{branch}/plugins_manifest.json"
         logger.debug(f"Fetching manifest from {url}")
 
-        response = requests.get(url, timeout=self.timeout)
+        response = requests.get(url, timeout=self.config.timeout)
         response.raise_for_status()
 
         manifest_data = response.json()
         return PluginManifest(**manifest_data)
 
     def _download_plugin_file(self, filename: str) -> bytes:
-        """Download a single plugin file."""
+        """Download a single plugin file from GitHub."""
+        repo = self.config.online.repository
+        branch = self.config.online.branch
         # URL encode the filename
         encoded_filename = quote(filename)
-        url = f"{self.raw_base}/{self.repo}/{self.branch}/plugins/{encoded_filename}"
+        url = f"{self.raw_base}/{repo}/{branch}/plugins/{encoded_filename}"
         logger.debug(f"Downloading from {url}")
 
-        response = requests.get(url, timeout=self.timeout)
+        response = requests.get(url, timeout=self.config.timeout)
         response.raise_for_status()
 
         return response.content
@@ -434,11 +576,19 @@ class PluginUpdater:
                 )
             )
 
+        # Get repository info based on source type
+        if self.config.source_type == "online":
+            repository = self.config.online.repository
+            branch = self.config.online.branch
+        else:
+            repository = "local"
+            branch = "local"
+
         return PluginManifest(
             manifest_version="1.0.0",
             last_updated=datetime.now(timezone.utc).isoformat(),
-            repository=self.repo,
-            branch=self.branch,
+            repository=repository,
+            branch=branch,
             plugins=entries,
         )
 
@@ -539,3 +689,107 @@ class PluginUpdater:
             for byte_block in iter(lambda: f.read(4096), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
+
+    # Local source methods
+
+    def _fetch_local_manifest(self) -> PluginManifest:
+        """
+        Fetch manifest from local source folder.
+
+        Looks for plugins_manifest.json in the local path. If not found and
+        auto_generate_manifest is enabled, generates a manifest from available plugins.
+
+        Returns:
+            PluginManifest: Loaded or generated manifest
+
+        Raises:
+            FileNotFoundError: If manifest not found and auto-generation disabled
+        """
+        local_path = Path(self.config.local.path)
+        manifest_file = local_path / "plugins_manifest.json"
+
+        # Try to load existing manifest
+        if manifest_file.exists():
+            logger.debug(f"Loading manifest from {manifest_file}")
+            try:
+                manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
+                return PluginManifest(**manifest_data)
+            except Exception as e:
+                logger.error(f"Failed to load manifest from {manifest_file}: {e}")
+                raise
+
+        # Auto-generate if enabled
+        if self.config.local.auto_generate_manifest:
+            logger.info("Auto-generating manifest from local plugins")
+            return self._generate_manifest_from_folder(local_path)
+
+        raise FileNotFoundError(
+            f"Manifest not found at {manifest_file} and auto-generation is disabled"
+        )
+
+    def _generate_manifest_from_folder(self, folder_path: Path) -> PluginManifest:
+        """
+        Generate a manifest from plugin files in a folder.
+
+        Args:
+            folder_path: Path to folder containing plugin files
+
+        Returns:
+            PluginManifest: Generated manifest
+        """
+        plugin_files = list(folder_path.glob("*.py"))
+        plugin_files = [
+            f for f in plugin_files
+            if f.name != "__init__.py" and not f.name.startswith("_")
+        ]
+
+        if not plugin_files:
+            logger.warning(f"No plugin files found in {folder_path}")
+
+        entries = []
+        for plugin_file in plugin_files:
+            sha256 = self._calculate_sha256_file(plugin_file)
+            size = plugin_file.stat().st_size
+
+            entries.append(
+                PluginManifestEntry(
+                    name=plugin_file.stem,
+                    filename=plugin_file.name,
+                    version="unknown",
+                    description="Auto-generated from local file",
+                    sha256=sha256,
+                    size=size,
+                    required=False,
+                    os_target=None,
+                )
+            )
+
+        return PluginManifest(
+            manifest_version="1.0.0",
+            last_updated=datetime.now(timezone.utc).isoformat(),
+            repository="local",
+            branch="local",
+            plugins=entries,
+        )
+
+    def _copy_local_plugin_file(self, filename: str) -> bytes:
+        """
+        Copy a plugin file from local source folder.
+
+        Args:
+            filename: Plugin filename to copy
+
+        Returns:
+            bytes: File content
+
+        Raises:
+            FileNotFoundError: If plugin file not found
+        """
+        local_path = Path(self.config.local.path)
+        plugin_file = local_path / filename
+
+        if not plugin_file.exists():
+            raise FileNotFoundError(f"Plugin file not found: {plugin_file}")
+
+        logger.debug(f"Reading plugin from {plugin_file}")
+        return plugin_file.read_bytes()

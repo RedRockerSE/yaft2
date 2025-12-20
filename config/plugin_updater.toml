@@ -1,0 +1,44 @@
+# YAFT Plugin Updater Configuration
+# This file controls plugin update behavior for YAFT (Yet Another Forensic Tool)
+
+[plugin_updater]
+# Source type: online, local
+# online: Download plugins from GitHub repository (default)
+# local: Load plugins from local or network folder
+source_type = "online"
+
+# Check interval in hours (how often to check for updates)
+check_interval_hours = 24
+
+# Request timeout in seconds (for online sources)
+timeout = 30
+
+# Verify plugin integrity using SHA256 hashes
+verify_integrity = true
+
+# Backup existing plugins before overwriting
+backup_on_update = true
+
+# Online source configuration (used when source_type = "online")
+[plugin_updater.online]
+# GitHub repository in format "owner/repo"
+repository = "RedRockerSE/yaft2"
+
+# Git branch to use
+branch = "main"
+
+# Local source configuration (used when source_type = "local")
+[plugin_updater.local]
+# Path to local or network folder containing plugins
+# Examples:
+#   Windows local: "C:\\Users\\Username\\plugins"
+#   Windows network: "\\\\SERVER\\share\\plugins"
+#   Linux/macOS: "/home/username/plugins" or "/mnt/network/plugins"
+#
+# The folder should contain:
+#   - Plugin Python files (*.py)
+#   - plugins_manifest.json (manifest file with plugin metadata)
+path = ""
+
+# Whether to automatically create manifest for local plugins if missing
+auto_generate_manifest = false

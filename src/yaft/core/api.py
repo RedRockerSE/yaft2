@@ -120,6 +120,9 @@ class CoreAPI:
         # Setup logging with configuration
         self._setup_logging()
 
+        # Load plugin updater configuration
+        self._plugin_updater_config = self._load_plugin_updater_config()
+
         # Storage for shared data between plugins
         self._shared_data: dict[str, Any] = {}
 
@@ -173,6 +176,48 @@ class CoreAPI:
             self.console.print(f"[bold yellow][WARNING][/bold yellow] Failed to load logging config: {e}")
             self.console.print("[bold yellow][WARNING][/bold yellow] Using default logging configuration")
             return LoggingConfig()
+
+    def _load_plugin_updater_config(self) -> Any:
+        """
+        Load plugin updater configuration from TOML file.
+
+        Returns:
+            PluginUpdaterConfig: Loaded configuration or default config if file doesn't exist
+        """
+        from yaft.core.plugin_updater import PluginUpdaterConfig, OnlineSourceConfig, LocalSourceConfig
+
+        config_file = self.config_dir / "plugin_updater.toml"
+
+        if not config_file.exists():
+            # Return default configuration
+            return PluginUpdaterConfig()
+
+        try:
+            with open(config_file, encoding="utf-8") as f:
+                config_data = toml.load(f)
+
+            # Extract plugin_updater section
+            updater_section = config_data.get("plugin_updater", {})
+
+            # Extract nested sections
+            online_section = updater_section.get("online", {})
+            local_section = updater_section.get("local", {})
+
+            # Build config components
+            online_config = OnlineSourceConfig(**online_section) if online_section else OnlineSourceConfig()
+            local_config = LocalSourceConfig(**local_section) if local_section else LocalSourceConfig()
+
+            # Remove nested dicts and build main config
+            main_config = {k: v for k, v in updater_section.items() if k not in ["online", "local"]}
+            main_config["online"] = online_config
+            main_config["local"] = local_config
+
+            return PluginUpdaterConfig(**main_config)
+        except Exception as e:
+            # If config is invalid, print warning and use defaults
+            self.console.print(f"[bold yellow][WARNING][/bold yellow] Failed to load plugin updater config: {e}")
+            self.console.print("[bold yellow][WARNING][/bold yellow] Using default plugin updater configuration")
+            return PluginUpdaterConfig()
 
     def _setup_logging(self) -> None:
         """Configure logging based on loaded configuration."""
@@ -3775,35 +3820,45 @@ class CoreAPI:
 
     def get_plugin_updater(
         self,
-        repo: str = "RedRockerSE/yaft2",
-        branch: str = "main",
         plugins_dir: Path | None = None,
+        config: Any | None = None,
     ) -> Any:
         """
         Get a PluginUpdater instance for managing plugin updates.
 
+        Uses configuration from config/plugin_updater.toml by default.
+        Configuration supports both online (GitHub) and local/network folder sources.
+
         Args:
-            repo: GitHub repository (owner/repo format)
-            branch: Git branch to use
             plugins_dir: Custom plugins directory (default: plugins/)
+            config: Custom PluginUpdaterConfig (default: loaded from config file)
 
         Returns:
             PluginUpdater instance
 
         Example:
+            # Use default configuration (from config/plugin_updater.toml)
             updater = self.core_api.get_plugin_updater()
             result = updater.check_for_updates()
             if result.updates_available:
                 updater.download_plugins()
+
+            # Use custom configuration
+            from yaft.core.plugin_updater import PluginUpdaterConfig
+            custom_config = PluginUpdaterConfig(source_type="local")
+            custom_config.local.path = "C:\\path\\to\\plugins"
+            updater = self.core_api.get_plugin_updater(config=custom_config)
         """
         from yaft.core.plugin_updater import PluginUpdater
 
         if plugins_dir is None:
             plugins_dir = Path("plugins")
 
+        # Use provided config or loaded config
+        updater_config = config if config is not None else self._plugin_updater_config
+
         return PluginUpdater(
-            repo=repo,
-            branch=branch,
+            config=updater_config,
             plugins_dir=plugins_dir,
             cache_dir=Path(".plugin_cache"),
         )

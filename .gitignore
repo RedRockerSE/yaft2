@@ -56,7 +56,7 @@ dmypy.json
 *.log
 
 # Configuration
-config/*.toml
+# config/*.toml
 config/*.json
 !config/example.toml
 
