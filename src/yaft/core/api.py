@@ -1581,6 +1581,118 @@ class CoreAPI:
         content = self.read_zip_file(path)
         return self.parse_xml(content)
 
+    # ========== SEGB and Protobuf Methods ==========
+
+    def read_segb_file(self, file_path: str | Path) -> Any:
+        """
+        Read and parse a SEGB (Segmented Binary) file from the file system.
+
+        SEGB files are used by iOS Biome to store event data in a segmented binary format.
+        This method supports both SEGB v1 and SEGB v2 file formats.
+
+        Args:
+            file_path: Path to SEGB file (can be from extracted ZIP or direct filesystem path)
+
+        Returns:
+            Any: Iterator/generator of SEGB records from the file
+
+        Raises:
+            ImportError: If ccl_segb module is not available
+            ValueError: If file is not a valid SEGB file
+            Exception: If file reading fails
+
+        Examples:
+            >>> # Read SEGB file after extraction
+            >>> api.extract_zip_file("biome/file.segb", temp_dir)
+            >>> records = api.read_segb_file(temp_dir / "file.segb")
+            >>> for record in records:
+            ...     print(record.timestamp1, record.state, record.data)
+
+        Note:
+            This method requires the ccl_segb library which should be installed
+            in the project at yaft.ccl_segb.
+        """
+        try:
+            from yaft.ccl_segb.ccl_segb import read_segb_file
+        except ImportError as e:
+            error_msg = (
+                "SEGB support requires 'ccl_segb' module. "
+                "This should be included in src/yaft/ccl_segb/"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        try:
+            self.log_debug(f"Reading SEGB file: {file_path}")
+            return read_segb_file(file_path)
+        except Exception as e:
+            self.log_error(f"Failed to read SEGB file {file_path}: {e}")
+            raise
+
+    def decode_protobuf(
+        self,
+        data: bytes,
+        message_type: dict[str, Any] | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """
+        Decode protobuf message data using blackboxprotobuf.
+
+        This method decodes protobuf messages without requiring a .proto file definition.
+        It's particularly useful for forensic analysis of iOS Biome data and other
+        protobuf-encoded artifacts.
+
+        Args:
+            data: Binary protobuf message data
+            message_type: Optional protobuf type definition (typedef dict).
+                         If None, blackboxprotobuf will attempt to infer the structure.
+
+        Returns:
+            tuple: (decoded_message, inferred_types)
+                - decoded_message: Dict containing decoded protobuf fields
+                - inferred_types: Dict containing inferred type definitions
+
+        Raises:
+            ImportError: If blackboxprotobuf is not installed
+            Exception: If protobuf decoding fails
+
+        Examples:
+            >>> # Decode iOS Biome battery percentage protobuf
+            >>> protobuf_types = {
+            ...     "1": {"type": "message", "message_typedef": {...}},
+            ...     "2": {"type": "double", "name": ""},
+            ...     "4": {"type": "message", "message_typedef": {...}},
+            ... }
+            >>> decoded, types = api.decode_protobuf(record_data, protobuf_types)
+            >>> battery_pct = decoded["4"]["5"]
+
+            >>> # Decode without type definition (auto-infer)
+            >>> decoded, inferred = api.decode_protobuf(unknown_data)
+
+        Note:
+            This method requires the blackboxprotobuf package:
+            pip install blackboxprotobuf
+        """
+        try:
+            import blackboxprotobuf
+        except ImportError as e:
+            error_msg = (
+                "Protobuf decoding requires 'blackboxprotobuf' package. "
+                "Install with: pip install blackboxprotobuf"
+            )
+            self.log_error(error_msg)
+            raise ImportError(error_msg) from e
+
+        try:
+            self.log_debug("Decoding protobuf message")
+            if message_type is not None:
+                result = blackboxprotobuf.decode_message(data, message_type)
+            else:
+                result = blackboxprotobuf.protobuf_to_json(data)
+            return result
+        except Exception as e:
+            self.log_error(f"Failed to decode protobuf message: {e}")
+            raise
+
     # ========== Keychain and Keystore Methods ==========
 
     def parse_ios_keychain(
@@ -3954,7 +4066,7 @@ class CoreAPI:
                     methods_by_category["ZIP File Handling"].append(method_info)
                 elif "find_files" in name:
                     methods_by_category["File Search"].append(method_info)
-                elif "plist" in name or "xml" in name or name in ["parse_plist", "parse_xml"]:
+                elif "plist" in name or "xml" in name or "segb" in name or "protobuf" in name or name in ["parse_plist", "parse_xml", "read_segb_file", "decode_protobuf"]:
                     methods_by_category["Data Format Parsing"].append(method_info)
                 elif "sqlite" in name or "query" in name or "sqlcipher" in name or "decrypt" in name:
                     methods_by_category["SQLite & Database"].append(method_info)
