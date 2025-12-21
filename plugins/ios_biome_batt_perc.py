@@ -2,26 +2,6 @@
 iOS Biome Battery Percentage Plugin
 
 Parses battery percentage entries from iOS Biome SEGB files.
-
-**Dependencies:**
-This plugin uses Core API methods that require:
-
-1. blackboxprotobuf - For protobuf decoding (via core_api.decode_protobuf)
-   Install: pip install blackboxprotobuf
-
-2. ccl_segb - For SEGB file parsing (via core_api.read_segb_file)
-   Location: src/yaft/ccl_segb/ (included in project)
-
-The dependencies are managed through the Core API, so plugins don't need to
-import them directly. The Core API will raise ImportError if dependencies
-are missing.
-
-**Installation:**
-```bash
-# Install optional blackboxprotobuf dependency
-pip install blackboxprotobuf
-
-# ccl_segb is included in the project at src/yaft/ccl_segb/
 ```
 
 Ported from iLEAPP biome battery percentage artifact.
