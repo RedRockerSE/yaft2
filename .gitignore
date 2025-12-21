@@ -83,3 +83,6 @@ research/
 extracted_files/
 
 PRESENTATION.md
+
+# Ignore reference files
+ref/
