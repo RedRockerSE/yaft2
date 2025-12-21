@@ -101,34 +101,6 @@ class iOSbiomeBattPercPlugin(PluginBase):
             self.core_api.print_error("No ZIP file loaded")
             return {"success": False, "error": "No ZIP file loaded"}
 
-        # Check dependencies
-        if not self._has_blackboxprotobuf or not self._has_ccl_segb:
-            missing_deps = []
-            if not self._has_blackboxprotobuf:
-                missing_deps.append("blackboxprotobuf (pip install blackboxprotobuf)")
-            if not self._has_ccl_segb:
-                missing_deps.append("ccl_segb (copy from iLEAPP or install from source)")
-
-            error_msg = (
-                f"Missing required dependencies: {', '.join(missing_deps)}\n\n"
-                "This plugin requires external libraries:\n"
-                "1. blackboxprotobuf: pip install blackboxprotobuf\n"
-                "2. ccl_segb: Should be included in src/yaft/ccl_segb/\n"
-                "   If missing, copy from iLEAPP or install from:\n"
-                "   https://github.com/cclgroupltd/ccl_segb\n\n"
-                "The Core API provides methods to access these libraries.\n"
-                "See plugin docstring for detailed installation instructions."
-            )
-
-            self.core_api.print_error(error_msg)
-            self.errors.append(error_msg)
-
-            return {
-                "success": False,
-                "error": "Missing dependencies",
-                "missing_dependencies": missing_deps,
-            }
-
         # Detect ZIP format
         self.extraction_type, self.zip_prefix = self.core_api.detect_zip_format()
         self.core_api.print_info(f"Detected extraction format: {self.extraction_type}")
