@@ -748,6 +748,23 @@ format_type, prefix = self.core_api.detect_zip_format()
 path = self.core_api.normalize_zip_path("data/data/com.example/app.db", prefix)
 ```
 
+### AI Features (Experimental)
+
+YAFT includes an experimental, pluggable LLM provider abstraction. It's plumbing only for now: a working local backend and CLI/config wiring, with no plugin sending case data to a model yet.
+
+- **Local-only by default**: the default provider is Ollama (or any OpenAI-compatible server), so forensic case data stays on the examiner's machine unless a cloud provider is explicitly configured.
+- **Opt-in**: AI features are disabled until you run `yaft ai-configure --enable`. Cloud providers (Anthropic, OpenAI) have config placeholders but are not yet implemented.
+
+```bash
+# Configure and enable the local (Ollama) provider
+python -m yaft.cli ai-configure --provider ollama --model llama3.1:8b --enable
+
+# Check configuration and test connectivity (no case data is sent)
+python -m yaft.cli ai-status
+```
+
+See [docs/YaFT.md](docs/YaFT.md#ai--llm-provider-experimental) for details.
+
 ## Building Executables
 
 ### Prerequisites

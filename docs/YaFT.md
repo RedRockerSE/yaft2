@@ -1937,6 +1937,31 @@ python build_exe.py
 uv pip install package-name
 ```
 
+## AI / LLM Provider (Experimental)
+
+YAFT includes an experimental, pluggable LLM provider abstraction for future AI-assisted plugins. It ships with a working local backend and configuration/CLI wiring only - no plugin sends case data to a model yet.
+
+**Local-only by default:** the default provider is Ollama (or any OpenAI-compatible server: llama.cpp, LM Studio, LocalAI, vLLM) so forensic case data never has to leave the examiner's machine. Cloud providers (Anthropic, OpenAI) have config placeholders but are not yet implemented - calling them raises a clear error. AI features are disabled by default; even the local backend requires an explicit `yaft ai-configure --enable`.
+
+```bash
+# Configure and enable the local (Ollama) provider
+python -m yaft.cli ai-configure --provider ollama --model llama3.1:8b --enable
+
+# Check configuration and test connectivity (no case data is sent)
+python -m yaft.cli ai-status
+
+# Disable AI features
+python -m yaft.cli ai-configure --disable
+```
+
+Configuration lives in `config/ai.toml`, following the same pattern as `config/plugin_updater.toml`. Programmatic access mirrors `get_plugin_updater()`:
+
+```python
+provider = self.core_api.get_llm_provider()
+if provider.is_available():
+    result = provider.summarize("some text")
+```
+
 ## Plugin Profiles
 
 YaFT supports plugin profiles - TOML configuration files that specify a set of plugins to run together. This makes it easy to perform standard analysis workflows without manually listing plugins each time.

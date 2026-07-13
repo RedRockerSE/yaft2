@@ -123,6 +123,9 @@ class CoreAPI:
         # Load plugin updater configuration
         self._plugin_updater_config = self._load_plugin_updater_config()
 
+        # Load AI / LLM provider configuration
+        self._ai_config = self._load_ai_config()
+
         # Storage for shared data between plugins
         self._shared_data: dict[str, Any] = {}
 
@@ -218,6 +221,69 @@ class CoreAPI:
             self.console.print(f"[bold yellow][WARNING][/bold yellow] Failed to load plugin updater config: {e}")
             self.console.print("[bold yellow][WARNING][/bold yellow] Using default plugin updater configuration")
             return PluginUpdaterConfig()
+
+    def _load_ai_config(self) -> Any:
+        """
+        Load AI / LLM provider configuration from TOML file.
+
+        Returns:
+            AIConfig: Loaded configuration or default config if file doesn't exist
+        """
+        from yaft.core.ai_config import (
+            AIConfig,
+            AnthropicProviderConfig,
+            OllamaProviderConfig,
+            OpenAIProviderConfig,
+        )
+
+        config_file = self.config_dir / "ai.toml"
+
+        if not config_file.exists():
+            # Return default configuration
+            return AIConfig()
+
+        try:
+            with open(config_file, encoding="utf-8") as f:
+                config_data = toml.load(f)
+
+            # Extract ai section
+            ai_section = config_data.get("ai", {})
+
+            # Extract nested provider sections
+            providers_section = ai_section.get("providers", {})
+            ollama_section = providers_section.get("ollama", {})
+            anthropic_section = providers_section.get("anthropic", {})
+            openai_section = providers_section.get("openai", {})
+
+            # Build config components
+            ollama_config = (
+                OllamaProviderConfig(**ollama_section) if ollama_section else OllamaProviderConfig()
+            )
+            anthropic_config = (
+                AnthropicProviderConfig(**anthropic_section)
+                if anthropic_section
+                else AnthropicProviderConfig()
+            )
+            openai_config = (
+                OpenAIProviderConfig(**openai_section) if openai_section else OpenAIProviderConfig()
+            )
+
+            # Remove nested dict and build main config
+            main_config = {k: v for k, v in ai_section.items() if k != "providers"}
+            main_config["ollama"] = ollama_config
+            main_config["anthropic"] = anthropic_config
+            main_config["openai"] = openai_config
+
+            return AIConfig(**main_config)
+        except Exception as e:
+            # If config is invalid, print warning and use defaults
+            self.console.print(
+                f"[bold yellow][WARNING][/bold yellow] Failed to load AI config: {e}"
+            )
+            self.console.print(
+                "[bold yellow][WARNING][/bold yellow] Using default AI configuration"
+            )
+            return AIConfig()
 
     def _setup_logging(self) -> None:
         """Configure logging based on loaded configuration."""
@@ -3976,6 +4042,36 @@ class CoreAPI:
         )
 
     # ========================================================================
+    # AI / LLM Provider Methods
+    # ========================================================================
+
+    def get_llm_provider(self) -> Any:
+        """
+        Get the configured LLM provider.
+
+        Uses configuration from config/ai.toml. Defaults to a local,
+        self-hosted backend (Ollama) since forensic case data often cannot
+        leave the examiner's machine. Cloud providers (Anthropic, OpenAI)
+        are opt-in and not yet implemented.
+
+        Returns:
+            LLMProvider instance for the configured default provider
+
+        Raises:
+            AIFeatureDisabledError: If AI features are disabled in config/ai.toml
+            AIProviderNotImplementedError: If the configured provider (anthropic,
+                openai) has no implementation yet
+
+        Example:
+            provider = self.core_api.get_llm_provider()
+            if provider.is_available():
+                result = provider.summarize("some text")
+        """
+        from yaft.ai.factory import build_provider
+
+        return build_provider(self._ai_config)
+
+    # ========================================================================
     # API Documentation
     # ========================================================================
 
@@ -4016,6 +4112,7 @@ class CoreAPI:
             "Encoding & Decoding": [],
             "Configuration": [],
             "Plugin System": [],
+            "AI / LLM": [],
             "User Input": [],
             "Shared Data": [],
         }
@@ -4086,6 +4183,8 @@ class CoreAPI:
                     methods_by_category["Configuration"].append(method_info)
                 elif "plugin" in name or "updater" in name:
                     methods_by_category["Plugin System"].append(method_info)
+                elif "llm" in name or name.startswith("ai_"):
+                    methods_by_category["AI / LLM"].append(method_info)
                 elif "input" in name or "confirm" in name or "prompt" in name:
                     methods_by_category["User Input"].append(method_info)
                 elif "shared_data" in name:

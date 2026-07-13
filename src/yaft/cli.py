@@ -7,11 +7,13 @@ Provides command-line interface with color-coded output using Typer and Rich.
 from pathlib import Path
 from typing import Annotated
 
+import toml
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
 from yaft import __version__
+from yaft.ai.exceptions import AIProviderNotImplementedError
 from yaft.core.api import CoreAPI
 from yaft.core.plugin_manager import PluginManager
 
@@ -648,6 +650,119 @@ def list_available_plugins(
 
     except Exception as e:
         console.print(f"\n[red]✗ Failed to list plugins:[/red] {str(e)}")
+        raise typer.Exit(code=1)
+
+
+@app.command(name="ai-configure")
+def ai_configure(
+    provider: Annotated[
+        str,
+        typer.Option("--provider", help="Provider: ollama, anthropic, openai"),
+    ] = "ollama",
+    model: Annotated[
+        str | None,
+        typer.Option("--model", help="Model name"),
+    ] = None,
+    base_url: Annotated[
+        str | None,
+        typer.Option("--base-url", help="Base URL (ollama/openai-compatible only)"),
+    ] = None,
+    enable: Annotated[
+        bool,
+        typer.Option("--enable/--disable", help="Enable or disable AI features"),
+    ] = True,
+) -> None:
+    """
+    Configure the AI provider (writes config/ai.toml).
+
+    AI features default to a local, self-hosted backend (Ollama) since
+    forensic case data often cannot leave the examiner's machine. Cloud
+    providers (anthropic, openai) are not yet implemented.
+
+    Examples:
+        yaft ai-configure --provider ollama --model llama3.1:8b --enable
+        yaft ai-configure --disable
+    """
+    from yaft.core.ai_config import AIConfig, OllamaProviderConfig
+
+    core_api = get_core_api()
+    cfg = core_api._ai_config
+
+    ollama_cfg = OllamaProviderConfig(
+        base_url=base_url or cfg.ollama.base_url,
+        model=model or cfg.ollama.model,
+        timeout=cfg.ollama.timeout,
+    )
+
+    try:
+        new_cfg = AIConfig(
+            enabled=enable,
+            default_provider=provider,
+            ollama=ollama_cfg,
+            anthropic=cfg.anthropic,
+            openai=cfg.openai,
+        )
+    except Exception as e:
+        console.print(f"[red]✗ Invalid configuration:[/red] {str(e)}")
+        raise typer.Exit(code=1) from e
+
+    config_file = core_api.config_dir / "ai.toml"
+    toml_data = {
+        "ai": {
+            "enabled": new_cfg.enabled,
+            "default_provider": new_cfg.default_provider,
+            "providers": {
+                "ollama": new_cfg.ollama.model_dump(),
+                "anthropic": new_cfg.anthropic.model_dump(),
+                "openai": new_cfg.openai.model_dump(),
+            },
+        }
+    }
+
+    with open(config_file, "w", encoding="utf-8") as f:
+        toml.dump(toml_data, f)
+
+    core_api._ai_config = new_cfg
+
+    console.print(f"[green]✓[/green] AI config written to {config_file}")
+    console.print(f"  Enabled: {new_cfg.enabled}")
+    console.print(f"  Default provider: {new_cfg.default_provider}")
+    if new_cfg.default_provider == "ollama":
+        console.print(f"  Base URL: {new_cfg.ollama.base_url}")
+        console.print(f"  Model: {new_cfg.ollama.model}")
+
+
+@app.command(name="ai-status")
+def ai_status() -> None:
+    """
+    Show AI configuration and test connectivity to the configured provider.
+
+    Performs a connectivity check only - no case data is sent.
+    """
+    core_api = get_core_api()
+    cfg = core_api._ai_config
+
+    if not cfg.enabled:
+        console.print(
+            "[yellow]AI features disabled.[/yellow] Run [bold]yaft ai-configure --enable[/bold]."
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        provider = core_api.get_llm_provider()
+    except AIProviderNotImplementedError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        raise typer.Exit(code=1) from e
+
+    if provider.is_available():
+        console.print(f"[green]✓[/green] {cfg.default_provider} reachable ({cfg.ollama.model})")
+    else:
+        console.print(
+            f"[red]✗[/red] Could not reach {cfg.default_provider} at {cfg.ollama.base_url}"
+        )
+        console.print(
+            f"[dim]Is `ollama serve` running? Did you `ollama pull {cfg.ollama.model}`?[/dim]"
+        )
         raise typer.Exit(code=1)
 
 
