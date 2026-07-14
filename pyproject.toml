@@ -29,6 +29,7 @@ dependencies = [
     "requests>=2.32.0",
     "markdown>=3.5.0",
     "blackboxprotobuf>=1.0.1",
+    "mcp>=1.28.1",
 ]
 
 [project.optional-dependencies]
