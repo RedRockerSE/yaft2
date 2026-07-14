@@ -1,0 +1,32 @@
+# YAFT AI / LLM Provider Configuration
+# This file controls AI feature behavior for YAFT (Yet Another Forensic Tool)
+#
+# AI features are disabled by default. Forensic case data (PII, potentially
+# CSAM, chain-of-custody-bound evidence) often cannot legally leave the
+# examiner's machine, so the default provider is a local, self-hosted
+# backend (Ollama). Cloud providers (Anthropic, OpenAI) are strictly
+# opt-in and are not yet implemented in this release.
+
+[ai]
+# Master switch for all AI features. Even the local backend requires this
+# to be explicitly enabled (via `yaft ai-configure --enable`).
+enabled = false
+
+# Default provider to use: ollama, anthropic, openai
+default_provider = "ollama"
+
+# Local, OpenAI-compatible backend (Ollama, llama.cpp, LM Studio, LocalAI, vLLM)
+[ai.providers.ollama]
+base_url = "http://localhost:11434/v1"
+model = "llama3.1:8b"
+timeout = 60
+
+# Anthropic provider (placeholder - not yet implemented)
+[ai.providers.anthropic]
+enabled = false
+model = "claude-haiku-4-5"
+
+# OpenAI provider (placeholder - not yet implemented)
+[ai.providers.openai]
+enabled = false
+model = "gpt-4o-mini"

@@ -93,6 +93,17 @@ def test_get_api_methods_zip_handling_category(core_api):
     assert "list_zip_contents" in method_names
 
 
+def test_get_api_methods_ai_llm_category(core_api):
+    """Test that AI / LLM category contains get_llm_provider."""
+    methods = core_api.get_api_methods()
+
+    assert "AI / LLM" in methods
+    ai_methods = methods["AI / LLM"]
+
+    method_names = [m["name"] for m in ai_methods]
+    assert "get_llm_provider" in method_names
+
+
 def test_get_api_methods_no_private_methods(core_api):
     """Test that private methods are not included."""
     methods = core_api.get_api_methods()
