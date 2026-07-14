@@ -28,6 +28,14 @@ python3 -m venv ~/tools/yaft-mcp/.venv
 claude mcp add --transport stdio yaft -- \
   ~/tools/yaft-mcp/.venv/bin/python ~/tools/yaft-mcp/server.py
 ```
+Or UV
+```bash
+cd ~/path/to/yaft2
+uv add mcp
+
+claude mcp add --transport stdio yaft -- \
+  uv run --directory ~/path/to/yaft2 mcp/server.py
+```
 
 Add `--scope project` if you want it shared via a committed `.mcp.json` instead of
 your personal config. Verify with `claude mcp list`, then inside a session run `/mcp`
